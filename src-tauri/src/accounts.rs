@@ -1337,7 +1337,12 @@ impl<R: Runtime> Core<R> {
         };
         // Run from the home folder, as the user would.
         let (_, home) = app_env();
-        let env = [settings.claude_env(), launch_env(&account)].concat();
+        let mut env = [settings.claude_env(), launch_env(&account)].concat();
+        if let Err(e) = crate::pty::open_browser_apart(&self.data.browser_opener(), &mut env) {
+            log::warn!(
+                "sign-in of account {id}: no browser opener, its end closes the browser: {e}"
+            );
+        }
         let (me, term) = (Arc::downgrade(self), info.id.clone());
         self.pty.spawn_program(
             info.clone(),

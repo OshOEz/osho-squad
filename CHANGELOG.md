@@ -8,6 +8,10 @@ Les changements visibles d'Escouade, version par version. Les notes de chaque re
 
 - Les statistiques d'usage ne se disent plus anonymes : leur identifiant tiré au hasard les rend pseudonymes au sens du RGPD. La fenêtre du premier lancement dit « sans rien qui t'identifie » et qu'elles sont gardées 25 mois ; le réglage s'appelle « Statistiques d'usage ». « Non merci » et « Partager les statistiques » ont le même aspect : refuser n'est pas moins visible qu'accepter. La page [Confidentialité](https://escouade.dev/privacy/) donne la base légale (ton consentement), tes droits et comment les exercer, la réclamation auprès de la CNIL, l'hébergeur et les journaux du serveur.
 
+### Corrections
+
+- Sous macOS et Linux, la connexion à un compte Claude ne referme plus le navigateur qu'elle a ouvert, quand elle se termine comme quand tu fermes son terminal. Claude Code l'ouvre désormais par un petit script d'Escouade (`open-browser`, dans son dossier de données) qui lance ton `BROWSER` s'il y en a un, sinon `xdg-open` ou `open`, hors du terminal de la connexion. Le programme de connexion et ce qu'il a lancé sans fenêtre s'arrêtent toujours avec lui.
+
 ## [1.7.6] — 2026-10-13
 
 ### Ajouts

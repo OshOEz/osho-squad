@@ -293,6 +293,95 @@ pub fn run_cwd(project: &str, sub: &str) -> Result<String> {
     Ok(dir.to_string_lossy().into_owned())
 }
 
+/// What tells Escouade's browser opener the user's own `BROWSER` (empty: none).
+#[cfg(unix)]
+pub const USER_BROWSER_VAR: &str = "ESCOUADE_BROWSER";
+
+/// Escouade's browser opener (`open_browser_apart`): the user's browser, else the system's
+/// opener, in a session of its own (macOS has no `setsid`: Perl's). Without the user's, `BROWSER`
+/// goes: `xdg-open` would run the opener again.
+#[cfg(unix)]
+const BROWSER_OPENER: &str = r#"#!/bin/sh
+# Escouade: opens the page Claude Code asks for in a session of its own, so that the browser it
+# starts outlives the terminal of the sign-in, whose end takes what runs in it.
+browser=$ESCOUADE_BROWSER
+unset ESCOUADE_BROWSER
+if [ -n "$browser" ]; then
+  BROWSER=$browser
+  export BROWSER
+  set -- "$browser" "$@"
+else
+  unset BROWSER
+  if [ "$(uname)" = Darwin ]; then set -- open "$@"; else set -- xdg-open "$@"; fi
+fi
+if command -v setsid >/dev/null 2>&1; then
+  exec setsid "$@"
+fi
+if command -v perl >/dev/null 2>&1; then
+  exec perl -MPOSIX -e 'POSIX::setsid(); exec { $ARGV[0] } @ARGV or exit 127' -- "$@"
+fi
+exec "$@"
+"#;
+
+/// Has a program of a terminal (Claude Code signing in) open its browser through Escouade's
+/// opener, written at `opener`, out of the terminal. On Unix, the end of the program hangs up its
+/// terminal's session, whose processes die of it (SIGHUP), and its process group is killed: a
+/// browser started there (by `xdg-open`, when none runs yet) would go with them, and nothing tells
+/// a process with a window from one without. The opener runs the user's own `BROWSER`, kept in
+/// `env` for it.
+#[cfg(unix)]
+pub fn open_browser_apart(opener: &Path, env: &mut Vec<(String, String)>) -> std::io::Result<()> {
+    write_executable(opener, BROWSER_OPENER)?;
+    let opener = opener.to_string_lossy().into_owned();
+    let var = |k: &str| {
+        env.iter()
+            .rev()
+            .find(|(name, _)| name == k)
+            .map(|(_, v)| v.clone())
+            .or_else(|| std::env::var(k).ok())
+    };
+    // Already the opener (Escouade started from a sign-in's terminal): the user's is the one it
+    // was given.
+    let user = match var("BROWSER") {
+        Some(b) if b == opener => var(USER_BROWSER_VAR),
+        b => b,
+    };
+    env.retain(|(k, _)| k != "BROWSER" && k != USER_BROWSER_VAR);
+    env.push(("BROWSER".into(), opener));
+    env.push((USER_BROWSER_VAR.into(), user.unwrap_or_default()));
+    Ok(())
+}
+
+/// On Windows, nothing to do: the Job of the terminal spares what shows a window.
+#[cfg(not(unix))]
+pub fn open_browser_apart(_opener: &Path, _env: &mut Vec<(String, String)>) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// Writes `text` at `path`, executable by its owner alone, whole or not at all: a program may run
+/// it at any time.
+#[cfg(unix)]
+fn write_executable(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_extension(format!("{}-{n}.tmp", std::process::id()));
+    let written = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o700)
+        .open(&tmp)
+        .and_then(|mut f| f.write_all(text.as_bytes()))
+        .and_then(|()| std::fs::rename(&tmp, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    written
+}
+
 /// Finds the cursor position query (`ESC [ 6 n`) in what a terminal prints, even when it is cut
 /// between two reads: the end of each read is kept to join it to the next.
 #[derive(Default)]
@@ -377,7 +466,9 @@ impl PtyManager {
 
     /// An interactive terminal running `program` itself, with no shell around it (the sign-in of
     /// a Claude account, the Claude Code view): it ends with the program, and what it starts goes
-    /// with it; except, with `spare_windows`, what shows a window (the browser of the sign-in).
+    /// with it; except, with `spare_windows`, what shows a window (the browser of the sign-in). On
+    /// Unix, where nothing tells it, such a program starts its browser out of the terminal
+    /// (`open_browser_apart`).
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_program(
         &self,
@@ -1409,6 +1500,235 @@ mod unix_tests {
             }
             std::thread::sleep(Duration::from_millis(50));
         }
+    }
+
+    fn alive(pid: i32) -> bool {
+        // SAFETY: signal 0 only checks that the process exists.
+        unsafe { libc::kill(pid, 0) == 0 }
+    }
+
+    /// Kills the processes it holds when it is dropped: a test that failed leaves them running.
+    #[derive(Default)]
+    struct Reaper(Vec<i32>);
+
+    impl Drop for Reaper {
+        fn drop(&mut self) {
+            for pid in &self.0 {
+                // SAFETY: plain syscall on a process the test started.
+                unsafe { libc::kill(*pid, libc::SIGKILL) };
+            }
+        }
+    }
+
+    /// Writes the shell script `name` in `dir`, executable.
+    fn script(dir: &Path, name: &str, text: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join(name);
+        std::fs::write(&path, format!("#!/bin/sh\n{text}")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    /// The command starting, in the background, a process that tells its id in `pid_file`, then
+    /// waits a minute.
+    fn background(pid_file: &Path) -> String {
+        format!(
+            "sh -c 'echo $$ > \"$1\"; exec sleep 60' sh '{}' &",
+            pid_file.display()
+        )
+    }
+
+    /// The process id told in `pid_file`.
+    fn told_pid(pid_file: &Path) -> i32 {
+        let start = Instant::now();
+        loop {
+            if let Some(pid) = std::fs::read_to_string(pid_file)
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+            {
+                return pid;
+            }
+            assert!(
+                start.elapsed() < Duration::from_secs(30),
+                "no process id in {}",
+                pid_file.display()
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// Waits for the process `pid` to end; false if it is still there after `secs`.
+    fn ends_within(pid: i32, secs: u64) -> bool {
+        let start = Instant::now();
+        while alive(pid) {
+            if start.elapsed() > Duration::from_secs(secs) {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        true
+    }
+
+    /// How a program of a terminal ends in `what_a_program_takes`.
+    #[derive(PartialEq)]
+    enum End {
+        /// It ends by itself.
+        Itself,
+        /// Its terminal is closed while it runs.
+        Closed,
+    }
+
+    /// Runs a program standing for Claude Code in a terminal of its own: it starts a process in
+    /// the background (a program without a window) and opens a page with `$BROWSER`, as Claude
+    /// Code does; the browser (a fake one) starts the process standing for itself and returns, as
+    /// `xdg-open` does when no browser runs yet. Then the program ends as `end` says. With
+    /// `sign_in`, it runs as the sign-in does: sparing what shows a window, with Escouade's
+    /// opener. Returns whether the background process and the browser ended with it.
+    fn what_a_program_takes(name: &'static str, sign_in: bool, end: End) -> (bool, bool) {
+        let _one = one_shell_at_a_time();
+        let dir = crate::paths::test_dir(name);
+        let mut reaper = Reaper::default();
+        let (console_file, browser_file) = (dir.join("console.pid"), dir.join("browser.pid"));
+        let browser = script(&dir, "browser", &background(&browser_file));
+        let wait = match end {
+            End::Itself => "sleep 1",
+            End::Closed => "sleep 60",
+        };
+        let program = script(
+            &dir,
+            "claude",
+            &format!(
+                "{}\n\"$BROWSER\" 'https://claude.ai/oauth/authorize?code=true'\nwhile [ ! -s '{}' ] || [ ! -s '{}' ]; do sleep 0.1; done\n{wait}\n",
+                background(&console_file),
+                console_file.display(),
+                browser_file.display(),
+            ),
+        );
+        let mut env = vec![("BROWSER".to_string(), browser.display().to_string())];
+        if sign_in {
+            open_browser_apart(&dir.join("open-browser"), &mut env).unwrap();
+        }
+        let pty = PtyManager::default();
+        let info = TermInfo {
+            id: name.into(),
+            project_id: String::new(),
+            name: "connexion".into(),
+            shell: "claude".into(),
+        };
+        let (ended, done) = std::sync::mpsc::channel();
+        pty.spawn_program(
+            info,
+            &crate::claude::Program::Native(PathBuf::from("/bin/sh")),
+            &[program.display().to_string()],
+            &dir.to_string_lossy(),
+            (120, 30),
+            env,
+            sign_in,
+            |_| {},
+            move |_| {
+                let _ = ended.send(());
+            },
+        )
+        .unwrap();
+        let console = told_pid(&console_file);
+        reaper.0.push(console);
+        let browser = told_pid(&browser_file);
+        reaper.0.push(browser);
+        if end == End::Closed {
+            assert!(alive(console) && alive(browser));
+            pty.kill(name);
+        }
+        done.recv_timeout(Duration::from_secs(60))
+            .expect("the program did not end");
+        // The browser is given the time a wrongly killed one would take to end.
+        (ends_within(console, 10), ends_within(browser, 3))
+    }
+
+    #[test]
+    fn the_end_of_the_sign_in_ends_what_it_started_but_the_browser_it_opened() {
+        let (console_ended, browser_ended) =
+            what_a_program_takes("pty-unix-sign-in-end", true, End::Itself);
+        assert!(console_ended, "the program without a window survived");
+        assert!(!browser_ended, "the browser of the sign-in died with it");
+    }
+
+    #[test]
+    fn closing_the_sign_in_ends_what_it_started_but_the_browser_it_opened() {
+        let (console_ended, browser_ended) =
+            what_a_program_takes("pty-unix-sign-in-close", true, End::Closed);
+        assert!(console_ended, "the program without a window survived");
+        assert!(!browser_ended, "the browser of the sign-in died with it");
+    }
+
+    #[test]
+    fn the_end_of_the_claude_code_view_ends_everything_it_started() {
+        let (console_ended, browser_ended) =
+            what_a_program_takes("pty-unix-view-end", false, End::Itself);
+        assert!(console_ended, "the program without a window survived");
+        assert!(browser_ended, "the browser survived");
+    }
+
+    #[test]
+    fn the_sign_in_opens_the_users_browser_with_the_opener() {
+        let dir = crate::paths::test_dir("pty-unix-opener-env");
+        let opener = dir.join("open-browser");
+        let mut env = vec![
+            ("HTTPS_PROXY".to_string(), "http://proxy:3128".to_string()),
+            ("BROWSER".to_string(), "/usr/bin/firefox".to_string()),
+        ];
+        open_browser_apart(&opener, &mut env).unwrap();
+        let var = |k: &str| -> Vec<&str> {
+            env.iter()
+                .filter(|(n, _)| n == k)
+                .map(|(_, v)| v.as_str())
+                .collect()
+        };
+        assert_eq!(var("BROWSER"), vec![opener.to_str().unwrap()]);
+        assert_eq!(var(USER_BROWSER_VAR), vec!["/usr/bin/firefox"]);
+        assert_eq!(var("HTTPS_PROXY"), vec!["http://proxy:3128"]);
+        // The opener itself is never taken for the user's browser: it would open nothing.
+        let mut again = env.clone();
+        open_browser_apart(&opener, &mut again).unwrap();
+        assert_eq!(
+            again.iter().find(|(k, _)| k == USER_BROWSER_VAR).unwrap().1,
+            "/usr/bin/firefox"
+        );
+    }
+
+    #[test]
+    fn without_a_browser_of_the_user_the_opener_runs_the_systems() {
+        let dir = crate::paths::test_dir("pty-unix-opener-system");
+        let opener = dir.join("open-browser");
+        open_browser_apart(&opener, &mut Vec::new()).unwrap();
+        // Stand-ins for the system's openers: each tells what it was asked to open.
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let told = dir.join("told.txt");
+        for name in ["xdg-open", "open"] {
+            script(
+                &bin,
+                name,
+                &format!("echo \"{name} $1\" > '{}'\n", told.display()),
+            );
+        }
+        let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+        let status = std::process::Command::new(&opener)
+            .arg("https://claude.ai/login")
+            .env("PATH", path)
+            .env(USER_BROWSER_VAR, "")
+            .env("BROWSER", &opener)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let system = if cfg!(target_os = "macos") {
+            "open"
+        } else {
+            "xdg-open"
+        };
+        assert_eq!(
+            std::fs::read_to_string(&told).unwrap().trim(),
+            format!("{system} https://claude.ai/login")
+        );
     }
 }
 

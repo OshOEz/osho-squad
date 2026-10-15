@@ -332,6 +332,12 @@ impl DataDir {
         self.0.join("claude")
     }
 
+    /// The script the sign-in of a Claude account opens its browser with, on Unix
+    /// (`pty::open_browser_apart`).
+    pub fn browser_opener(&self) -> PathBuf {
+        self.0.join("open-browser")
+    }
+
     pub fn stats_db(&self) -> PathBuf {
         self.0.join("stats.db")
     }

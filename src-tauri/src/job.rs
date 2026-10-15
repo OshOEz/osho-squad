@@ -5,7 +5,8 @@
 //! app crashes or is killed (unless it is `release`d: an interactive terminal's, which leaves
 //! the windows its user opened alone and ends only what shows none, see `terminate_windowless`).
 //! On macOS (and other Unixes), the process group the child leads (see `isolate`): killed as a
-//! whole when the job is terminated or dropped.
+//! whole when the job is terminated or dropped. A browser that must outlive it starts out of it
+//! (`pty::open_browser_apart`).
 
 /// What the processes of a job use.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -477,7 +478,8 @@ mod imp {
             }
         }
 
-        /// A group knows no windows: all of it.
+        /// A group knows no windows: all of it. What shows one and must stay (the browser of a
+        /// sign-in) was started out of the group (`pty::open_browser_apart`).
         pub fn terminate_windowless(&self) {
             self.terminate();
         }
