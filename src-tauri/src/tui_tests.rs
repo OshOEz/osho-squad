@@ -348,9 +348,15 @@ async fn an_image_pasted_in_the_interface_is_written_to_a_file_whose_path_is_typ
     assert!(jpeg.ends_with(".jpg"), "{jpeg}");
     assert_ne!(jpeg, path);
     for refused in ["application/pdf", "image/svg+xml"] {
-        assert!(h.core.paste_image(&id, refused, &data).is_err(), "{refused}");
+        assert!(
+            h.core.paste_image(&id, refused, &data).is_err(),
+            "{refused}"
+        );
     }
-    assert!(h.core.paste_image(&id, "image/png", "pas du base64").is_err());
+    assert!(h
+        .core
+        .paste_image(&id, "image/png", "pas du base64")
+        .is_err());
 }
 
 #[tokio::test(flavor = "multi_thread")]
