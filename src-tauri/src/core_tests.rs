@@ -6619,14 +6619,18 @@ async fn an_accounts_sign_in_runs_its_claude_with_its_folder_in_a_terminal() {
         .core
         .create_claude_account("Pro", &[], ShareMode::Copy)
         .unwrap();
-    // A `claude` that tells the folder it was given.
+    // A `claude` that tells the folder it was given (and on Unix what opens its browser).
     let script = if cfg!(windows) {
         let s = h.dir.join("claude-login.cmd");
         std::fs::write(&s, "@echo off\r\necho config=[%CLAUDE_CONFIG_DIR%]\r\n").unwrap();
         s
     } else {
         let s = h.dir.join("claude-login");
-        std::fs::write(&s, "#!/bin/sh\necho \"config=[$CLAUDE_CONFIG_DIR]\"\n").unwrap();
+        std::fs::write(
+            &s,
+            "#!/bin/sh\necho \"config=[$CLAUDE_CONFIG_DIR] browser=[$BROWSER]\"\n",
+        )
+        .unwrap();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -6656,7 +6660,16 @@ async fn an_accounts_sign_in_runs_its_claude_with_its_folder_in_a_terminal() {
         ),
         ("Pro", "claude", "")
     );
-    let expected = format!("config=[{}]", pro.config_dir);
+    let expected = if cfg!(windows) {
+        format!("config=[{}]", pro.config_dir)
+    } else {
+        // Escouade's opener, which starts the browser out of the terminal of the sign-in.
+        format!(
+            "config=[{}] browser=[{}]",
+            pro.config_dir,
+            h.core.data.browser_opener().display()
+        )
+    };
     let start = std::time::Instant::now();
     let mut answered = false;
     while !plain_text(&out.lock()).contains(&expected) {
@@ -6681,6 +6694,12 @@ async fn an_accounts_sign_in_runs_its_claude_with_its_folder_in_a_terminal() {
             .any(|e| e["type"] == "terminalExit" && e["id"] == json!(info.id))
     })
     .await;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let opener = std::fs::metadata(h.core.data.browser_opener()).unwrap();
+        assert_eq!(opener.permissions().mode() & 0o777, 0o700);
+    }
     // Its `claude` gone: said so.
     h.core
         .update_claude_account(Account {

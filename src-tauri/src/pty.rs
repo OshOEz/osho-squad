@@ -324,14 +324,21 @@ exec "$@"
 "#;
 
 /// Has a program of a terminal (Claude Code signing in) open its browser through Escouade's
-/// opener, written at `opener`, out of the terminal. On Unix, the end of the program hangs up its
-/// terminal's session, whose processes die of it (SIGHUP), and its process group is killed: a
-/// browser started there (by `xdg-open`, when none runs yet) would go with them, and nothing tells
-/// a process with a window from one without. The opener runs the user's own `BROWSER`, kept in
-/// `env` for it.
+/// opener, written at `opener`, out of the terminal. On Unix, when the program ends, the kernel
+/// hangs up the terminal's foreground process group (SIGHUP), whose processes die of it, and that
+/// group is then killed: a browser started there (by `xdg-open`, when none runs yet) would go with
+/// them, and nothing tells a process with a window from one without. The opener runs the user's
+/// own `BROWSER`, kept in `env` for it.
 #[cfg(unix)]
 pub fn open_browser_apart(opener: &Path, env: &mut Vec<(String, String)>) -> std::io::Result<()> {
     write_executable(opener, BROWSER_OPENER)?;
+    // Claude Code would open no browser at all.
+    if !runnable(opener) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("{} cannot be run (noexec?)", opener.display()),
+        ));
+    }
     let opener = opener.to_string_lossy().into_owned();
     let var = |k: &str| {
         env.iter()
@@ -356,6 +363,18 @@ pub fn open_browser_apart(opener: &Path, env: &mut Vec<(String, String)>) -> std
 #[cfg(not(unix))]
 pub fn open_browser_apart(_opener: &Path, _env: &mut Vec<(String, String)>) -> std::io::Result<()> {
     Ok(())
+}
+
+/// Whether this process may run the file `path`: not on a file system mounted `noexec`, whatever
+/// the file's mode.
+#[cfg(unix)]
+fn runnable(path: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
+        return false;
+    };
+    // SAFETY: plain syscall on a NUL-terminated path.
+    unsafe { libc::access(path.as_ptr(), libc::X_OK) == 0 }
 }
 
 /// Writes `text` at `path`, executable by its owner alone, whole or not at all: a program may run
@@ -1700,7 +1719,8 @@ mod unix_tests {
         let dir = crate::paths::test_dir("pty-unix-opener-system");
         let opener = dir.join("open-browser");
         open_browser_apart(&opener, &mut Vec::new()).unwrap();
-        // Stand-ins for the system's openers: each tells what it was asked to open.
+        // Stand-ins for the system's openers: each tells what it was asked to open, and the
+        // variables it got (a `BROWSER` still set to the opener: `xdg-open` would run it again).
         let bin = dir.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         let told = dir.join("told.txt");
@@ -1708,7 +1728,10 @@ mod unix_tests {
             script(
                 &bin,
                 name,
-                &format!("echo \"{name} $1\" > '{}'\n", told.display()),
+                &format!(
+                    "echo \"{name} $1 ${{BROWSER-unset}} ${{{USER_BROWSER_VAR}-unset}}\" > '{}'\n",
+                    told.display()
+                ),
             );
         }
         let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
@@ -1727,8 +1750,48 @@ mod unix_tests {
         };
         assert_eq!(
             std::fs::read_to_string(&told).unwrap().trim(),
-            format!("{system} https://claude.ai/login")
+            format!("{system} https://claude.ai/login unset unset")
         );
+    }
+
+    #[test]
+    fn the_opener_runs_the_users_browser_with_its_own_browser_variable() {
+        let dir = crate::paths::test_dir("pty-unix-opener-user");
+        let opener = dir.join("open-browser");
+        open_browser_apart(&opener, &mut Vec::new()).unwrap();
+        let told = dir.join("told.txt");
+        let browser = script(
+            &dir,
+            "my-browser",
+            &format!(
+                "echo \"$1 ${{BROWSER-unset}} ${{{USER_BROWSER_VAR}-unset}}\" > '{}'\n",
+                told.display()
+            ),
+        );
+        let status = std::process::Command::new(&opener)
+            .arg("https://claude.ai/login")
+            .env(USER_BROWSER_VAR, &browser)
+            .env("BROWSER", &opener)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        assert_eq!(
+            std::fs::read_to_string(&told).unwrap().trim(),
+            format!("https://claude.ai/login {} unset", browser.display())
+        );
+    }
+
+    #[test]
+    fn only_a_file_that_can_be_run_is_runnable() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = crate::paths::test_dir("pty-unix-runnable");
+        let file = dir.join("open-browser");
+        std::fs::write(&file, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(!runnable(&file));
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(runnable(&file));
+        assert!(!runnable(&dir.join("absent")));
     }
 }
 
