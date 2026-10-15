@@ -308,3 +308,58 @@ async fn a_hook_without_the_token_of_an_interface_is_refused() {
     assert!(call(None).contains("401"));
     assert!(call(Some("not-a-token")).contains("401"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_image_pasted_in_the_interface_is_written_to_a_file_whose_path_is_typed_there() {
+    use base64::Engine;
+    let h = harness("tui-paste");
+    let id = agent_in_tui(&h).await;
+    let pastes = h.dir.join("data").join("tui").join("pastes");
+    // Kept a week, for Claude Code reads it again when the image's message is resumed or the
+    // model looks at its source: older ones go as the next one comes.
+    std::fs::create_dir_all(&pastes).unwrap();
+    let aged = |name: &str, days: u64| {
+        let f = pastes.join(name);
+        std::fs::write(&f, b"old").unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&f)
+            .unwrap()
+            .set_modified(
+                std::time::SystemTime::now() - std::time::Duration::from_secs(days * 24 * 3600),
+            )
+            .unwrap();
+        f
+    };
+    let (old, recent) = (aged("old.png", 8), aged("recent.png", 6));
+
+    let png = [137u8, 80, 78, 71, 13, 10, 26, 10];
+    let data = base64::engine::general_purpose::STANDARD.encode(png);
+    let path = h.core.paste_image(&id, "image/png", &data).unwrap();
+    let file = std::path::Path::new(&path);
+    assert_eq!(file.parent(), Some(pastes.as_path()));
+    assert_eq!(file.extension().unwrap(), "png");
+    assert_eq!(std::fs::read(file).unwrap(), png);
+    assert!(!old.exists());
+    assert!(recent.exists());
+
+    // Each paste its own file, named after its type as Claude Code reads it.
+    let jpeg = h.core.paste_image(&id, "image/jpeg", &data).unwrap();
+    assert!(jpeg.ends_with(".jpg"), "{jpeg}");
+    assert_ne!(jpeg, path);
+    for refused in ["application/pdf", "image/svg+xml"] {
+        assert!(h.core.paste_image(&id, refused, &data).is_err(), "{refused}");
+    }
+    assert!(h.core.paste_image(&id, "image/png", "pas du base64").is_err());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_image_is_pasted_only_where_claude_codes_interface_runs() {
+    use base64::Engine;
+    let h = harness("tui-paste-none");
+    let (p, _) = h.project(false).await;
+    let id = agent_on(&h, &p, "principal").await.id;
+    let data = base64::engine::general_purpose::STANDARD.encode([1u8]);
+    let e = h.core.paste_image(&id, "image/png", &data).unwrap_err();
+    assert!(e.to_string().contains("vue Claude Code"), "{e}");
+}

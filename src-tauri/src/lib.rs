@@ -259,6 +259,7 @@ pub fn run() {
             commands::account_login,
             commands::set_agent_view,
             commands::agent_terminal,
+            commands::paste_image,
             commands::inspect_folder,
             commands::create_project,
             commands::update_project,

@@ -196,6 +196,8 @@ pub struct TuiRun {
     /// The transcript it writes, once known, and how far it was read (bytes).
     pub transcript: Option<std::path::PathBuf>,
     pub offset: u64,
+    /// The `claude` it runs: what reads the files Escouade gives it (an image pasted there).
+    pub program: crate::claude::Program,
 }
 
 const MAX_TEXT: usize = 8000;

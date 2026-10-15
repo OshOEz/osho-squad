@@ -35,7 +35,7 @@ When the agent is waiting for an answer, you give it in the terminal: the [overv
 
 ## Writing to an agent in this view
 
-Escouade’s message field isn’t shown: you write in the terminal, as in Claude Code. To attach a file, paste it into the terminal.
+Escouade’s message field isn’t shown: you write in the terminal, as in Claude Code. To attach an image, such as a copied screenshot, paste it into the terminal (`Ctrl+V`, `Cmd+V` on macOS): Escouade saves it to a file and types its path, which Claude Code takes for the image (“[Image #1]”). Pasted text is typed as it is.
 
 A message sent to the agent from elsewhere, for example through the [MCP server](mcp), is typed into its interface. It’s refused while the agent is waiting for an answer in its terminal (“The agent is waiting for an answer in its terminal: answer there first.”). An interruption requested from Escouade becomes the `Esc` key in the interface.
 

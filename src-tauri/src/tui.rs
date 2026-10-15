@@ -193,6 +193,39 @@ fn no_proxy(env: &mut Vec<(String, String)>) {
     }
 }
 
+/// How long an image pasted in an interface is kept: Claude Code reads its file again when the
+/// session is resumed, and the model may look at it by its path.
+const PASTES_KEPT: Duration = Duration::from_secs(7 * 24 * 3600);
+
+/// The extension Claude Code knows an image by, for the images it reads.
+fn image_extension(media_type: &str) -> Option<&'static str> {
+    match media_type {
+        "image/png" => Some("png"),
+        "image/jpeg" => Some("jpg"),
+        "image/gif" => Some("gif"),
+        "image/webp" => Some("webp"),
+        _ => None,
+    }
+}
+
+/// Removes the pasted images older than `PASTES_KEPT` from `dir`.
+fn clear_pastes(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let aged = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > PASTES_KEPT);
+        if aged {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 /// Refused: a ticket's agent is driven by its board, over the stream.
 fn ticket_refusal() -> anyhow::Error {
     anyhow!(tr!(
@@ -451,6 +484,7 @@ impl<R: Runtime> Core<R> {
                 gen,
                 transcript: transcript.0,
                 offset: transcript.1,
+                program,
             });
             rt.tui_since = since;
         }
@@ -459,6 +493,40 @@ impl<R: Runtime> Core<R> {
         let (c, agent) = (self.clone(), id.to_string());
         tauri::async_runtime::spawn(async move { c.read_loop(&agent, gen).await });
         Ok(info)
+    }
+
+    /// An image pasted in the agent's interface (base64 `data`), which reads the clipboard's only
+    /// on a key of its own: written to a file, whose path the window types there. Claude Code takes
+    /// a pasted path to an image for the image, as a file dropped on a terminal. The path is the
+    /// one its `claude` reads (in WSL, the Linux one).
+    pub fn paste_image(&self, id: &str, media_type: &str, data: &str) -> Result<String> {
+        use base64::Engine;
+        let program = self
+            .agent(id)?
+            .lock()
+            .tui
+            .as_ref()
+            .map(|t| t.program.clone())
+            .ok_or_else(|| {
+                anyhow!(tr!(
+                    "L’agent n’est pas en vue Claude Code.",
+                    "The agent is not in the Claude Code view."
+                ))
+            })?;
+        let Some(extension) = image_extension(media_type) else {
+            bail!(tr!(
+                "Claude Code ne lit pas les images {media_type}",
+                "Claude Code does not read {media_type} images",
+                media_type = media_type
+            ));
+        };
+        let bytes = base64::engine::general_purpose::STANDARD.decode(data)?;
+        let dir = self.data.root().join("tui").join("pastes");
+        std::fs::create_dir_all(&dir)?;
+        clear_pastes(&dir);
+        let file = dir.join(format!("{}.{extension}", uuid::Uuid::new_v4().simple()));
+        std::fs::write(&file, bytes)?;
+        Ok(program.file_path(&file))
     }
 
     /// Reads the transcript of the agent's interface `gen` as it is written, until it stops.

@@ -432,6 +432,16 @@ impl Program {
         })
     }
 
+    /// The path it reads a file Escouade wrote by: its Linux one in WSL.
+    pub fn file_path(&self, file: &Path) -> String {
+        let path = file.to_string_lossy();
+        match self {
+            Program::Wsl(wsl) => wsl.linux_path(&path),
+            Program::Native(_) => None,
+        }
+        .unwrap_or_else(|| path.into_owned())
+    }
+
     /// What the user knows it by, in messages: its path, and its distribution for one of WSL.
     pub fn describe(&self) -> String {
         match self {
@@ -648,6 +658,19 @@ mod tests {
             home: "/home/me".into(),
             mount_root: "/mnt/".into(),
         }
+    }
+
+    #[test]
+    fn a_file_escouade_wrote_is_given_to_a_claude_of_wsl_by_its_linux_path() {
+        let file = Path::new(r"C:\Users\Jean Dupont\.escouade\tui\pastes\4f2a.png");
+        assert_eq!(
+            Program::Wsl(ubuntu_claude()).file_path(file),
+            "/mnt/c/Users/Jean Dupont/.escouade/tui/pastes/4f2a.png"
+        );
+        assert_eq!(
+            Program::Native(PathBuf::from(r"C:\bin\claude.exe")).file_path(file),
+            r"C:\Users\Jean Dupont\.escouade\tui\pastes\4f2a.png"
+        );
     }
 
     #[test]

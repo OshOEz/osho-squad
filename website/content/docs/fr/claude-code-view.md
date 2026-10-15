@@ -35,7 +35,7 @@ Quand l’agent attend une réponse, c’est dans le terminal que tu la donnes :
 
 ## Écrire à un agent dans cette vue
 
-Le champ de saisie d’Escouade n’est pas affiché : tu écris dans le terminal, comme dans Claude Code. Pour joindre un fichier, colle-le dans le terminal.
+Le champ de saisie d’Escouade n’est pas affiché : tu écris dans le terminal, comme dans Claude Code. Pour joindre une image, par exemple une capture d’écran copiée, colle-la dans le terminal (`Ctrl+V`, `Cmd+V` sous macOS) : Escouade l’enregistre dans un fichier et tape son chemin, que Claude Code prend pour l’image (« [Image #1] »). Du texte collé est tapé tel quel.
 
 Un message envoyé à l’agent d’ailleurs, par exemple par le [serveur MCP](mcp), est tapé dans son interface. Il est refusé tant que l’agent attend une réponse dans son terminal (« L’agent attend une réponse dans son terminal : réponds-y d’abord. »). Une interruption demandée depuis Escouade devient la touche `Échap` dans l’interface.
 

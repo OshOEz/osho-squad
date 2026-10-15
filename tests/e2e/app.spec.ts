@@ -433,6 +433,53 @@ test('a terminal runs commands in the project folder', async ({ app }) => {
   await expect.poll(() => fs.existsSync(path.join(app.repo, 'e2e-terminal.txt')), { timeout: 20_000 }).toBe(true);
 });
 
+test('in the Claude Code view, a pasted image goes to Claude Code as a file, and pasted text as before', async ({ app }) => {
+  const { page } = app;
+  await addProject(page, app.repo);
+  await page.getByRole('button', { name: 'Vue Claude Code' }).click();
+  await expect.poll(() => app.launches().some((l) => l.argv.includes('--settings')), { timeout: 20_000 }).toBe(true);
+  const field = page.locator('main .xterm textarea');
+  await expect(field).toBeAttached();
+  await page.waitForTimeout(1000); // the fake's start-up
+  // What WebView2 gives a paste: a screenshot is a PNG file without text; text has no file.
+  const paste = (content: { png?: number[]; text?: string }) =>
+    field.evaluate((el, { png, text }) => {
+      const data = new DataTransfer();
+      if (png) data.items.add(new File([new Uint8Array(png)], 'image.png', { type: 'image/png' }));
+      if (text) data.setData('text/plain', text);
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    }, content);
+  const png = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13];
+  await paste({ png });
+  const images = path.join(app.root, 'claude', 'fake-tui-images.jsonl');
+  await expect.poll(() => fs.existsSync(images), { timeout: 15_000 }).toBe(true);
+  const [image] = fs
+    .readFileSync(images, 'utf8')
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l));
+  expect([...Buffer.from(image.data, 'base64')]).toEqual(png);
+  expect(path.dirname(image.path)).toBe(path.join(app.data, 'tui', 'pastes'));
+
+  await paste({ text: ' que vois-tu ?' });
+  await field.press('Enter');
+  // The prompt Claude Code got, in its transcript.
+  const prompts = () =>
+    fs
+      .readdirSync(path.join(app.root, 'claude', 'projects'), { recursive: true, encoding: 'utf8' })
+      .filter((f) => f.endsWith('.jsonl'))
+      .flatMap((f) =>
+        fs
+          .readFileSync(path.join(app.root, 'claude', 'projects', f), 'utf8')
+          .trim()
+          .split('\n'),
+      )
+      .map((l) => JSON.parse(l))
+      .filter((e) => e.type === 'user' && typeof e.message?.content === 'string')
+      .map((e) => e.message.content);
+  await expect.poll(prompts, { timeout: 15_000 }).toContain('[Image #1] que vois-tu ?');
+});
+
 test('launch commands run in their own terminals, with their status live', async ({ app }) => {
   const { page } = app;
   const marker = path.join(app.repo, 'web', 'serveur.txt');

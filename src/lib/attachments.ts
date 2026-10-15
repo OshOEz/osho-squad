@@ -2,6 +2,7 @@
 
 import { fBytes } from './format';
 import { t } from './i18n';
+import { api } from './ipc';
 import type { Attachment } from './types';
 
 export type AttachmentKind = 'image' | 'pdf' | 'text';
@@ -58,9 +59,14 @@ function extension(name: string): string {
   return n.slice(n.lastIndexOf('.') + 1);
 }
 
+/** The media type of an image the API reads, from its type or else its name; null for any other file. */
+export function imageType(f: File): string | null {
+  return IMAGE_TYPES.has(f.type) ? f.type : (IMAGE_EXTENSIONS.get(extension(f.name)) ?? null);
+}
+
 export function attachmentKind(f: File): AttachmentKind | null {
   const ext = extension(f.name);
-  if (IMAGE_TYPES.has(f.type) || IMAGE_EXTENSIONS.has(ext)) return 'image';
+  if (imageType(f)) return 'image';
   if (f.type === 'application/pdf' || ext === 'pdf') return 'pdf';
   if (TEXT_EXTENSIONS.has(ext) || TEXT_TYPES.test(f.type)) return 'text';
   return null;
@@ -114,8 +120,22 @@ export async function readAttachment(f: File): Promise<DraftAttachment> {
   const url = await read(f, 'dataURL');
   const data = url.slice(url.indexOf(',') + 1);
   if (kind === 'pdf') return { kind, name: f.name, mediaType: 'application/pdf', data, size: f.size };
-  const mediaType = IMAGE_TYPES.has(f.type) ? f.type : IMAGE_EXTENSIONS.get(extension(f.name))!;
-  return { kind: 'image', name: f.name || 'image', mediaType, data, size: f.size, url };
+  return { kind: 'image', name: f.name || 'image', mediaType: imageType(f)!, data, size: f.size, url };
+}
+
+/** A file's content in base64, as the backend takes it. */
+export async function base64(f: File): Promise<string> {
+  const url = await read(f, 'dataURL');
+  return url.slice(url.indexOf(',') + 1);
+}
+
+/**
+ * The image of the system's clipboard, for a paste WebKitGTK (Linux) leaves without it (WebKit bug
+ * 218519): the app reads it itself. Null without one, and always elsewhere (the WebView gives it).
+ */
+export async function clipboardImage(): Promise<File | null> {
+  const png = await api.clipboardImage();
+  return png.byteLength ? new File([png], 'image.png', { type: 'image/png' }) : null;
 }
 
 /** A file dropped outside a drop zone would make the WebView open it in place of the app. */

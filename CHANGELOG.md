@@ -8,6 +8,10 @@ Les changements visibles d'Escouade, version par version. Les notes de chaque re
 
 - Les statistiques d'usage ne se disent plus anonymes : leur identifiant tiré au hasard les rend pseudonymes au sens du RGPD. La fenêtre du premier lancement dit « sans rien qui t'identifie » et qu'elles sont gardées 25 mois ; le réglage s'appelle « Statistiques d'usage ». « Non merci » et « Partager les statistiques » ont le même aspect : refuser n'est pas moins visible qu'accepter. La page [Confidentialité](https://escouade.dev/privacy/) donne la base légale (ton consentement), tes droits et comment les exercer, la réclamation auprès de la CNIL, l'hébergeur et les journaux du serveur.
 
+### Corrections
+
+- Dans la vue Claude Code, une image collée (`Ctrl+V`, `Cmd+V` sous macOS), par exemple une capture d'écran, est donnée à Claude Code : elle apparaît dans son champ comme « [Image #1] ». Avant, le collage ne faisait rien : le terminal collait le texte du presse-papiers, et Claude Code ne lit l'image que sur une touche à lui (`Alt+V` sous Windows). Escouade enregistre l'image dans un fichier de son dossier de données (gardé une semaine) et tape son chemin, que Claude Code lit, y compris installé dans WSL. Du texte collé est tapé comme avant, même quand le presse-papiers tient aussi une image (des cellules d'un tableur).
+
 ## [1.7.6] — 2026-10-13
 
 ### Ajouts

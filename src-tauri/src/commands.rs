@@ -275,6 +275,12 @@ pub async fn agent_terminal(
     .map_err(err)
 }
 
+/// An image pasted in the agent's Claude Code interface, written to a file: the path to type there.
+#[tauri::command(async)]
+pub fn paste_image(core: CoreState, id: String, media_type: String, data: String) -> Res<String> {
+    core.paste_image(&id, &media_type, &data).map_err(err)
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FolderInfo {

@@ -282,7 +282,8 @@ if (argv[0] === 'mcp') {
 // of the settings (HTTP, with the token of ESCOUADE_HOOK_TOKEN) and writes its transcript as
 // Claude Code does (see tests/fixtures/tui-transcript.jsonl). "permission" in the prompt asks for
 // Bash first and goes on once the next Enter comes; "lent" makes the turn wait for Escape, which
-// interrupts it; "/exit" ends the process.
+// interrupts it; "/exit" ends the process. A pasted path to an image file is the image, as Claude
+// Code takes it (« [Image #1] »): its path and content (base64) are added to <dir>/fake-tui-images.jsonl.
 function tuiSession() {
   const settings = JSON.parse(fs.readFileSync(argv[argv.indexOf('--settings') + 1], 'utf8'));
   const flag = (name) => argv.find((a) => a.startsWith(`${name}=`))?.slice(name.length + 1);
@@ -321,8 +322,9 @@ function tuiSession() {
   };
   let waiting = null;
   let line = '';
-  // No space: ConPTY draws a run of spaces as a cursor move (ESC[nC).
-  process.stdout.write('fake-claude-tui\r\n');
+  // No space: ConPTY draws a run of spaces as a cursor move (ESC[nC). Pastes come bracketed
+  // (ESC[200~ … ESC[201~), as Claude Code asks for them.
+  process.stdout.write('\x1b[?2004hfake-claude-tui\r\n');
   write({ type: 'permission-mode', permissionMode: argv[argv.indexOf('--permission-mode') + 1] ?? 'default' });
   const turn = async (prompt) => {
     if (prompt === '/exit') process.exit(0);
@@ -361,8 +363,23 @@ function tuiSession() {
   // As Claude Code's interface: every key as it comes (Escape alone, Enter as \r).
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdin.setEncoding('utf8');
+  let pasteStart = null;
+  let images = 0;
   process.stdin.on('data', (chunk) => {
     for (const part of chunk.split(/(\x1b\[20[01]~|\r|\x1b)/)) {
+      if (part === '\x1b[200~') pasteStart = line.length;
+      if (part === '\x1b[201~' && pasteStart !== null && pasteStart <= line.length) {
+        const file = line
+          .slice(pasteStart)
+          .trim()
+          .replace(/^"(.*)"$/, '$1');
+        if (/\.(png|jpe?g|gif|webp)$/i.test(file) && fs.existsSync(file)) {
+          const data = fs.readFileSync(file).toString('base64');
+          fs.appendFileSync(path.join(configDir, 'fake-tui-images.jsonl'), JSON.stringify({ path: file, data }) + '\n');
+          line = line.slice(0, pasteStart) + `[Image #${++images}]`;
+        }
+        pasteStart = null;
+      }
       if (part === '\x1b[200~' || part === '\x1b[201~' || part === '') continue;
       if (part === '\x1b') {
         if (waiting) [waiting, (waiting = null)][0]('escape');

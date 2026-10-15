@@ -7,9 +7,11 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { base64, clipboardImage, imageType } from './attachments';
 import { api } from './ipc';
 import { IS_MAC } from './platform';
 import { isAppShortcut } from './shortcuts';
+import { app } from './state.svelte';
 import type { TermInfo } from './types';
 
 export interface XTerm {
@@ -165,8 +167,50 @@ export function openAccountLogin(accountId: string): Promise<TermInfo> {
 }
 
 /** Claude Code's interface for the agent (« Vue Claude Code »): its session resumed in a terminal. */
-export function openAgentTerminal(agentId: string): Promise<TermInfo> {
-  return interactive((cols, rows, onData) => api.agentTerminal(agentId, cols, rows, onData));
+export async function openAgentTerminal(agentId: string): Promise<TermInfo> {
+  const info = await interactive((cols, rows, onData) => api.agentTerminal(agentId, cols, rows, onData));
+  pasteImages(xterms.get(info.id)!, agentId);
+  return info;
+}
+
+/**
+ * What a paste in Claude Code's interface carries: text, which xterm.js types (also beside an image:
+ * the cells of a spreadsheet); an image without text (a screenshot); or, the WebView giving neither
+ * text nor file, maybe an image only the system's clipboard holds (WebKitGTK leaves it out).
+ */
+export type Pasted = { kind: 'text' } | { kind: 'image'; file: File } | { kind: 'clipboard' };
+
+export function pastedContent(data: { getData(type: string): string; files: Iterable<File> } | null): Pasted {
+  if (data?.getData('text/plain')) return { kind: 'text' };
+  const files = [...(data?.files ?? [])];
+  const file = files.find((f) => imageType(f));
+  if (file) return { kind: 'image', file };
+  return files.length ? { kind: 'text' } : { kind: 'clipboard' };
+}
+
+/**
+ * Claude Code reads the clipboard's image on a key of its own (Alt+V under Windows, Ctrl+V
+ * elsewhere), never on the terminal's paste: a pasted image is written to a file of the agent's,
+ * and its path typed, which Claude Code takes for the image (« [Image #1] ») as it does a file
+ * dropped on a terminal. Text goes on to xterm.js.
+ */
+function pasteImages(x: XTerm, agentId: string) {
+  // Caught on its way down, before xterm.js's own listeners.
+  x.host.addEventListener(
+    'paste',
+    (e) => {
+      const pasted = pastedContent(e.clipboardData);
+      if (pasted.kind === 'text') return;
+      e.preventDefault();
+      e.stopPropagation();
+      (async () => {
+        const file = pasted.kind === 'image' ? pasted.file : await clipboardImage();
+        if (!file) return;
+        x.term.paste(await api.pasteImage(agentId, imageType(file)!, await base64(file)));
+      })().catch((err) => app.toast(err instanceof Error ? err.message : String(err), 'error'));
+    },
+    true,
+  );
 }
 
 /** An interactive terminal that `spawn` starts at the size of a new xterm.js instance, which then shows it. */

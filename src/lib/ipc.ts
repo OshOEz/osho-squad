@@ -131,6 +131,8 @@ export const api = {
     output.onmessage = onData;
     return invoke<TermInfo>('agent_terminal', { id, cols, rows, output });
   },
+  /** An image pasted in the agent's Claude Code view (base64), written to a file: the path to type there, as its `claude` reads it. */
+  pasteImage: (id: string, mediaType: string, data: string) => invoke<string>('paste_image', { id, mediaType, data }),
   deleteAgent: (id: string, removeWorktree: boolean) => invoke<string | null>('delete_agent', { id, removeWorktree }),
   /** Merges into the agent's base branch; `switchToBase`: the project's folder is switched to it first. */
   mergeAgent: (id: string, squash: boolean, switchToBase = false) => invoke<string>('merge_agent', { id, squash, switchToBase }),

@@ -4,7 +4,7 @@
 
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { ACCEPT, MAX_TOTAL, readAttachment, sizeLabel, type DraftAttachment } from '../lib/attachments';
+  import { ACCEPT, MAX_TOTAL, clipboardImage, readAttachment, sizeLabel, type DraftAttachment } from '../lib/attachments';
   import { accountName, newAgentAccount, serves } from '../lib/accounts';
   import { applyCompletion, detectTrigger, filterCommands, type Trigger } from '../lib/complete';
   import { conversationOf } from '../lib/conversations.svelte';
@@ -265,19 +265,13 @@
     app.toast(e instanceof Error ? e.message : String(e), 'error');
   }
 
-  // WebKitGTK (Linux) gives a paste no image from the clipboard (WebKit bug 218519): the app reads it itself.
-  async function clipboardImage(): Promise<File[]> {
-    const png = await api.clipboardImage();
-    return png.byteLength ? [new File([png], 'image.png', { type: 'image/png' })] : [];
-  }
-
   function onPaste(e: ClipboardEvent) {
     const list = [...(e.clipboardData?.files ?? [])];
     if (list.length) {
       e.preventDefault();
       addFiles(list);
     } else if (!e.clipboardData?.types.includes('text/plain')) {
-      addFiles(clipboardImage());
+      addFiles(clipboardImage().then((f) => (f ? [f] : [])));
     }
   }
 
