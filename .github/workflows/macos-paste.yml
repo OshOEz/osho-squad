@@ -1,0 +1,41 @@
+name: macOS paste probe
+
+# What WKWebView, the web view of Escouade under macOS, gives a paste (Cmd+V, the Edit menu's
+# Paste) when the pasteboard holds a screenshot, a copied PNG or text: the composer attaches the
+# image files it gets, the Claude Code view hands them to Claude Code (ESC-16). Runs when the
+# probe changes, or on demand after a macOS or WebKit update.
+on:
+  push:
+    paths:
+      - scripts/macos-paste-probe.swift
+      - .github/workflows/macos-paste.yml
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: Paste into WKWebView
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the probe
+        run: swiftc -o paste-probe scripts/macos-paste-probe.swift
+
+      - name: A screenshot on the pasteboard (screencapture -c, as Cmd+Ctrl+Shift+4 leaves it)
+        run: |
+          screencapture -c -x
+          osascript -e 'clipboard info'
+          ./paste-probe image
+
+      - name: A PNG file's image copied (as an image viewer's Copy)
+        run: |
+          screencapture -x shot.png
+          osascript -e "set the clipboard to (read (POSIX file \"$PWD/shot.png\") as «class PNGf»)"
+          osascript -e 'clipboard info'
+          ./paste-probe image
+
+      - name: Text, which stays text
+        run: |
+          printf 'texte colle' | pbcopy
+          ./paste-probe text
