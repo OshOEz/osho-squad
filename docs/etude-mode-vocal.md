@@ -107,6 +107,61 @@ Soit **2 à 4 s** pour une réponse simple, **4 à 8 s** quand il lit puis agit.
 
 Effort : deux à trois semaines au-dessus des niveaux 1 et 2 (synthèse, découpe en phrases, push-to-talk global, annonces, barge-in, réglages, tests sur les trois OS).
 
+## Option ElevenLabs, avec la clé de l'utilisateur
+
+Ajout du 2026-10-15. ElevenLabs couvre les deux bouts : Scribe pour la transcription, ses voix pour la synthèse (c'est aussi le prestataire des voix de l'app Claude). Le cerveau reste Claude Code : la plateforme « Agents » d'ElevenLabs, qui fournit un agent vocal complet, aurait son propre modèle et ne passerait pas par l'abonnement Claude. Elle facture à la minute en plus du modèle : à écarter.
+
+### Tarifs de l'API (paiement à l'usage)
+
+Relevés en octobre 2026 dans des sources secondaires, la page officielle n'étant pas joignable depuis l'environnement de l'étude. Ces tarifs ont bougé plusieurs fois en 2026 : à revérifier sur elevenlabs.io/pricing/api avant de les écrire dans l'app.
+
+| Service | Prix |
+|---|---|
+| Scribe, transcription en différé (envoi du fichier à la fin de la phrase) | ≈ 0,22 $ par heure d'audio |
+| Scribe Realtime (streaming) | ≈ 0,39 $ par heure |
+| Mots-clés imposés (noms de projets, d'agents, termes techniques) | + ≈ 0,05 $ par heure |
+| Voix Flash / Turbo (faible latence) | ≈ 0,04 $ (certaines sources : 0,05 $) pour 1 000 caractères |
+| Voix Multilingual / v3 (plus naturelles) | ≈ 0,08 $ (certaines sources : 0,10 $) pour 1 000 caractères |
+| Offre gratuite | ≈ 10 000 crédits par mois, environ 10 minutes de voix |
+
+### Ce que coûterait un usage réel
+
+Hypothèses, sur 22 jours de travail par mois : un tour de parole de 10 secondes, une réponse d'Escouade de 200 caractères environ (deux phrases courtes : le panneau garde le détail, la voix le résume), une annonce d'agent de 120 caractères.
+
+| Profil | Par jour | Transcription (Realtime) | Voix Flash | Voix Multilingual | Total par mois |
+|---|---|---|---|---|---|
+| Léger | 20 échanges, 10 annonces | 3,3 min → ≈ 0,5 $ | 5 200 car. → ≈ 4,6 $ | ≈ 9 $ | **≈ 5 à 10 $** |
+| Soutenu | 60 échanges, 40 annonces | 10 min → ≈ 1,4 $ | 16 800 car. → ≈ 15 $ | ≈ 30 $ | **≈ 16 à 31 $** |
+| Dictée seule (niveau 1) | 30 dictées de 20 s | 10 min → ≈ 0,8 $ en différé | — | — | **≈ 1 $** |
+
+Ce qu'on en retient :
+- **la transcription ne coûte presque rien** : même en usage intensif, quelques dollars par mois. La dictée seule via Scribe est une option crédible pour qui ne veut pas télécharger un modèle Whisper ;
+- **c'est la voix qui coûte**, proportionnellement à ce qu'Escouade dit. Les leviers : des réponses parlées courtes (le prompt système l'impose de toute façon pour l'oreille), Flash par défaut, et des annonces qui disent l'essentiel (« tests-e2e veut lancer npm test ») sans lire le contenu ;
+- **un hybride** est le meilleur compromis : Scribe pour la transcription (meilleure que Whisper local sur les termes techniques avec les mots-clés imposés), voix locale Piper ou voix d'ElevenLabs au choix. Le réglage se fait séparément pour l'entrée et la sortie.
+
+Rapporté à l'abonnement Claude (100 à 200 $ par mois pour un utilisateur qui fait tourner plusieurs agents), le surcoût reste de l'ordre de 5 à 15 %. À afficher dans les stats, à part du coût Claude, avec une estimation en direct comme pour les tokens (le prix au caractère et à la seconde se calcule sans attendre la facture).
+
+### Intégration
+
+- **Clé dans le trousseau du système**, comme les jetons de Jira, Trello, GitHub et Linear (`~/.escouade/integrations.json` sous Linux). Un test de la clé à l'enregistrement, et le quota restant d'ElevenLabs lu par son API pour l'afficher à côté.
+- **Tout côté Rust**, la CSP de la page reste fermée. Il faut une dépendance WebSocket (`tokio-tungstenite`, absente aujourd'hui) pour Scribe Realtime et pour la synthèse en flux, et une lecture audio (`rodio`) ou un `<audio>` alimenté par blobs (alors `media-src blob:` dans la CSP).
+- **La synthèse en flux colle au stream-json** : l'API d'ElevenLabs accepte du texte morceau par morceau sur une WebSocket et renvoie l'audio au fur et à mesure. On lui passe les phrases de Claude dès qu'elles arrivent ; avec Flash, le premier son arrive en quelques centaines de millisecondes, contre une seconde de plus en découpant soi-même.
+- **Le proxy réseau** des réglages s'applique, comme pour les quotas et les intégrations.
+- **Repli** : clé absente, invalide ou crédits épuisés, Escouade passe sur Whisper et Piper (ou la voix du système) et le dit une fois, sans couper la conversation.
+
+### Données personnelles
+
+L'audio de l'utilisateur et le texte des réponses sortent de la machine. Or ce texte peut contenir des noms de projets, de branches, de fichiers, des extraits de commandes. Il faut :
+- une entrée au `docs/registre-rgpd.md` (ElevenLabs comme destinataire, choisi et payé par l'utilisateur) ;
+- une phrase claire dans les réglages au moment de coller la clé ;
+- par défaut, des annonces qui ne lisent pas de contenu (commande, diff) : seulement le nom de l'agent et le type de demande.
+
+La rétention zéro d'ElevenLabs est réservée à ses offres entreprise : un compte ordinaire garde les données selon ses conditions.
+
+### Effort
+
+Environ une semaine de plus que la version locale : client WebSocket, gestion de la clé et des erreurs, estimation du coût, repli, réglages et textes en deux langues. L'architecture ne change pas : ElevenLabs est un fournisseur de transcription et de voix parmi d'autres, derrière la même interface que Whisper et Piper.
+
 ## Risques
 
 - **Build et taille** : whisper.cpp et onnxruntime (Piper, VAD) compilés ou embarqués pour Windows, macOS universel (deux architectures) et Linux. Les modèles se téléchargent à part ; les bibliothèques ajoutent quelques dizaines de Mo au binaire.
