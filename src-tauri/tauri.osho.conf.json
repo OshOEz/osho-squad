@@ -1,0 +1,14 @@
+{
+  "productName": "OshO Squad",
+  "identifier": "dev.oshoez.squad",
+  "bundle": {
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/OshOEz/osho-squad/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

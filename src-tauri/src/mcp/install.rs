@@ -21,7 +21,7 @@ use std::time::Duration;
 use tauri::Runtime;
 
 /// The name Claude Code knows the server by: its tools are `mcp__escouade__<tool>`.
-pub const NAME: &str = "escouade";
+pub const NAME: &str = "osho-squad";
 
 /// How long one `claude mcp` command may take.
 pub const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
