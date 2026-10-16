@@ -6,6 +6,7 @@
   import { api } from '../lib/ipc';
   import { menu } from '../lib/menu.svelte';
   import { askCloseProject } from '../lib/project-actions';
+  import { shownStatus } from '../lib/review';
   import { app } from '../lib/state.svelte';
   import { IS_MAC, keyLabel } from '../lib/platform';
   import {
@@ -169,9 +170,9 @@
     const agents = Object.values(app.agents).filter((a) => a.projectId === p.id && !a.archived);
     const seen = app.attentionIn(p.id);
     // The most pressing kind sets the blink's color: an error, then a question, then an end.
-    const alert = mostPressing(seen.map((a) => alertColor(a.status)));
+    const alert = mostPressing(seen.map((a) => alertColor(shownStatus(a))));
     return {
-      waiting: agents.filter((a) => a.status === 'waiting').length,
+      waiting: agents.filter((a) => shownStatus(a) === 'waiting').length,
       running: agents.some((a) => a.status === 'running'),
       changes: app.git[p.id]?.total ?? 0,
       alert,

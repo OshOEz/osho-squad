@@ -14,6 +14,7 @@
   import { planView } from '../lib/plan';
   import { sidebarSubs, type SubRow } from '../lib/subagents';
   import { BG_FINISHED_SHOWN, BG_RUNNING_SHOWN, bgCount, bgDuration, rowLine, rowTitle, sidebarBg, type BgRow } from '../lib/bgtasks';
+  import { shownStatus } from '../lib/review';
   import { estimateHint, fSpentUsd, spent } from '../lib/spend';
   import { app } from '../lib/state.svelte';
   import { closeTerminal, newTerminal, SHELL_GLYPH, terminalIn } from '../lib/term-actions';
@@ -379,7 +380,7 @@
         class="card"
         class:sel
         class:alert={app.attention[a.id]}
-        style:--alert={a.status === 'error' ? 'var(--del)' : a.status === 'waiting' ? 'var(--wait)' : 'var(--ok)'}
+        style:--alert={shownStatus(a) === 'error' ? 'var(--del)' : shownStatus(a) === 'waiting' ? 'var(--wait)' : 'var(--ok)'}
         role="button"
         tabindex="0"
         onclick={() => app.selectAgent(a.id)}
@@ -387,7 +388,7 @@
         oncontextmenu={(e) => agentMenu(e, a)}
       >
         <div class="row1">
-          <StatusDot status={a.status} size={8} />
+          <StatusDot status={shownStatus(a)} size={8} />
           {#if renaming === a.id}
             <!-- svelte-ignore a11y_autofocus -->
             <input
@@ -438,6 +439,8 @@
           {/if}
           {#if a.status === 'waiting'}
             <span class="pill">{statusLabel('waiting')}</span>
+          {:else if shownStatus(a) === 'waiting'}
+            <span class="pill">{t('conv.review.pill')}</span>
           {:else if a.resumeAt}
             <span class="status" style:color="var(--wait)" use:tip={t('nav.sidebar.resumeTitle', { when: fWhen(a.resumeAt, app.now) })}
               >{t('nav.sidebar.resumes', { when: fWhen(a.resumeAt, app.now) })}</span

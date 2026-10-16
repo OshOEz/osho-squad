@@ -15,6 +15,7 @@ import { setLang, t } from './i18n';
 import { mcp } from './mcp.svelte';
 import { readPref, writePref } from './prefs';
 import { testCommand } from './recipe';
+import { shownStatus } from './review';
 import type { SettingsTab } from './settings.svelte';
 import type { FormFile } from './ticket-files';
 import type { FormImage } from './ticket-images';
@@ -694,16 +695,12 @@ class AppState {
     return shown && (typeof document === 'undefined' || document.hasFocus());
   }
 
-  /** An agent that comes to ask, finish or fail out of sight needs a look. */
+  /** An agent that comes to ask, finish or fail out of sight needs a look (a review that waits asks too). */
   private noteAttention(prev: Agent | undefined, next: Agent) {
-    if (!ALERT.has(next.status) || next.archived) {
+    const status = shownStatus(next);
+    if (!ALERT.has(status) || next.archived) {
       delete this.attention[next.id];
-    } else if (
-      prev &&
-      prev.status !== next.status &&
-      !this.onScreen(next.id) &&
-      (next.status === 'waiting' || !this.ticketDoing(next.id))
-    ) {
+    } else if (prev && shownStatus(prev) !== status && !this.onScreen(next.id) && (status === 'waiting' || !this.ticketDoing(next.id))) {
       this.attention[next.id] = true;
     }
   }
@@ -1171,7 +1168,7 @@ class AppState {
   /** Next agent waiting for an answer or needing a look, across all projects (Ctrl+J). */
   nextWaiting() {
     const list = Object.values(this.agents)
-      .filter((a) => !a.archived && (a.status === 'waiting' || this.attention[a.id]))
+      .filter((a) => !a.archived && (shownStatus(a) === 'waiting' || this.attention[a.id]))
       .sort((a, b) => a.lastActivity - b.lastActivity);
     if (!list.length) return;
     const cur = this.agent?.id;

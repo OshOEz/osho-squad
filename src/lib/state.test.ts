@@ -1663,4 +1663,13 @@ describe('reviews', () => {
     emit({ type: 'agent', agent: agent({ id: 'a2', name: 'tests-e2e', createdAt: 2, reviews: ['rv2'] }) });
     expect(app.reviewShown).toEqual({ a1: 'rv1' });
   });
+
+  it('calls for a look at an agent out of sight whose review waits, and Ctrl+J goes to it', async () => {
+    const { emit } = await start();
+    // a2 is not on screen (a1 is): its turn ends with a review that waits.
+    emit({ type: 'agent', agent: agent({ id: 'a2', name: 'tests-e2e', createdAt: 2, status: 'done', reviews: ['rv2'] }) });
+    expect(app.attention.a2).toBe(true);
+    app.nextWaiting();
+    expect(app.agent?.id).toBe('a2');
+  });
 });

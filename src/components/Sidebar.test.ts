@@ -18,6 +18,15 @@ vi.mock('../lib/terminals', async (original) => ({
 }));
 
 describe('Sidebar', () => {
+  it('shows an agent whose review waits as waiting for an answer', () => {
+    fakeBackend();
+    app.agents.a1 = { ...app.agents.a1, status: 'done', reviews: ['rv1'] };
+    render(Sidebar, { project: project() });
+    const card = screen.getByRole('button', { name: /refacto-auth/ });
+    expect(within(card).getByText('Revue')).toBeInTheDocument();
+    expect(card.style.getPropertyValue('--alert')).toBe('var(--wait)');
+  });
+
   beforeEach(() =>
     resetApp({
       projects: [project()],
