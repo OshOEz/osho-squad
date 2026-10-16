@@ -3574,7 +3574,9 @@ impl<R: Runtime> Core<R> {
         // Refused before starting Claude: the composer keeps the message.
         let files = self.checked_files(id, files)?;
         let delivered = attachfiles::message_with_files(self.lang().claude, &delivered, &files);
-        let content = user_content(&delivered, &attachments)?;
+        // The commands the user ran (`!`) since, ahead of the message: not shown in its bubble.
+        let (ran, ran_count) = crate::bang::pending(id);
+        let content = user_content(&format!("{ran}{delivered}"), &attachments)?;
         // Before its turn: its first question about one of them finds the right to ask it.
         self.grant_files(id, &files);
         // Its new worktree is set up first: Claude would work in it meanwhile (an install running
@@ -3584,6 +3586,7 @@ impl<R: Runtime> Core<R> {
         for attempt in 0..2 {
             let proc = self.ensure_process(id).await?;
             if self.deliver(id, &proc, &delivered, naming, &content, &attachments)? {
+                crate::bang::delivered(id, ran_count);
                 return Ok(());
             }
             log::warn!("message not delivered (attempt {attempt}): the process exited");

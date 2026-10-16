@@ -177,6 +177,8 @@ export const api = {
    * backend keeps the path for `attachOrigin`: the page has no use for it but to know the file is one of the disk.
    */
   fileOrigin: (id: string) => invoke<string | null>('file_origin', { id }),
+  /** `!command`: run in the agent's folder, its output handed to Claude with the next message (no turn started). */
+  runBang: (id: string, command: string) => invoke<void>('run_bang', { id, command }),
   /** The image on the system's clipboard as PNG, empty without one: read for WebKitGTK (Linux), which leaves it out of a paste. */
   clipboardImage: () => invoke<ArrayBuffer>('clipboard_image'),
   interrupt: (id: string) => invoke<void>('interrupt', { id }),

@@ -377,13 +377,15 @@
     }
     // Text typed while Claude waits answers the question / refuses the permission.
     const answering = body ? pendingItem : undefined;
+    // `!command`, as in Claude Code: run in the agent's folder, its output given to Claude with the next message.
+    const bang = !answering && !agent.terminal && body.startsWith('!') ? body.slice(1).trim() : '';
     sending = true;
     const owner = draftFor;
     const prevText = text;
     const prevFiles = files;
     // A new worktree is prepared first: the backend holds the message until then, and it shows meanwhile.
     const unhold =
-      !answering && agent.setup
+      !answering && !bang && agent.setup
         ? conv.holdMessage({
             text: body,
             images: prevFiles.filter((f) => f.kind === 'image').length,
@@ -392,13 +394,15 @@
         : undefined;
     if (unhold) heldFor = agent.id;
     text = '';
-    if (!answering) files = [];
+    if (!answering && !bang) files = [];
     try {
       if (answering?.kind === 'question') {
         const q = answering as QuestionItem;
         await api.answerQuestion(agent.id, q.id, Object.fromEntries(q.questions.map((x) => [x.question, body])));
       } else if (answering?.kind === 'permission') {
         await api.answerPermission(agent.id, answering.id, 'deny', body);
+      } else if (bang) {
+        await api.runBang(agent.id, bang);
       } else {
         await api.sendMessage(
           agent.id,
@@ -412,7 +416,7 @@
       }
     } catch (e) {
       // The files of an answer never left the field.
-      giveBack(owner, prevText, answering ? [] : prevFiles);
+      giveBack(owner, prevText, answering || bang ? [] : prevFiles);
       app.toast(String(e), 'error');
     }
     // Recorded by now, or given back to the field above.

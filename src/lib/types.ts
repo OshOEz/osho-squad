@@ -1096,6 +1096,8 @@ export interface ToolItem extends Base {
   input: Record<string, any>;
   status: 'running' | 'ok' | 'error' | 'interrupted';
   result?: ToolResult;
+  /** A `!command` the user ran, not Claude. */
+  byUser?: boolean;
   ts: number;
   /** The call of a subagent (`Agent` / `Task`): the report it handed back (`handback_report`, else the `summary` of a notification with no hand-back), 16 000 bytes of UTF-8 at most. */
   report?: string;

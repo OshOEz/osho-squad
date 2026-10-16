@@ -87,6 +87,7 @@
     {:else if res}
       <span class="res">{res}</span>
     {/if}
+    {#if item.byUser}<span class="res">{item.input.description}</span>{/if}
     {#if subTools.length}<span class="res">{t('conv.tool.subTools', { count: subTools.length })}</span>{/if}
     {#if sub}
       <button

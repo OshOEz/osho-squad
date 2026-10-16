@@ -6,6 +6,7 @@ mod agent;
 mod attachfiles;
 #[cfg(test)]
 mod attachfiles_tests;
+mod bang;
 mod board;
 #[cfg(test)]
 mod branches_tests;
@@ -328,6 +329,7 @@ pub fn run() {
             commands::attach_discard,
             commands::attach_origin,
             fileorigin::file_origin,
+            bang::run_bang,
             commands::clipboard_image,
             commands::interrupt,
             commands::stop_subagent,

@@ -223,6 +223,15 @@ describe('Composer', () => {
     expect(textarea.value).toBe('');
   });
 
+  it('runs a message starting with ! as a command instead of sending it to Claude', async () => {
+    const { a, backend, textarea } = setup();
+    await userEvent.type(textarea, '! git status{Enter}');
+    await waitFor(() => expect(backend.called('run_bang')).toHaveLength(1));
+    expect(backend.called('run_bang')[0].args).toMatchObject({ id: a.id, command: 'git status' });
+    expect(backend.called('send_message')).toHaveLength(0);
+    expect(textarea.value).toBe('');
+  });
+
   it('shrinks the text field back once a long message is sent', async () => {
     const { textarea, backend } = setup();
     // jsdom has no layout: the content height follows the text.
