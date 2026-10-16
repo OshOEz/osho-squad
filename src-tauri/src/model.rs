@@ -885,6 +885,9 @@ pub struct AgentMeta {
     /// one line of `PROGRESS_LINE_MAX` characters at most: shown on its card and its ticket's,
     /// until its next call.
     pub progress_line: Option<String>,
+    /// The reviews it published (`show_review`) that wait for the user's answers, oldest first:
+    /// the ids of their items in its conversation. Saved, so that it still waits after a restart.
+    pub reviews: Vec<String>,
     /// Appended to Claude Code's system prompt at every start (the ticket's protocol), on one line.
     pub append_prompt: Option<String>,
     /// First of the 10 ports reserved for its test launches.

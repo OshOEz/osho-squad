@@ -2482,7 +2482,10 @@ impl<R: Runtime> Core<R> {
             .agents
             .read()
             .values()
-            .filter(|h| h.lock().meta.status == AgentStatus::Waiting)
+            .filter(|h| {
+                let rt = h.lock();
+                rt.meta.status == AgentStatus::Waiting || crate::review::awaits(&rt.meta)
+            })
             .count();
         if self.waiting.swap(n, Ordering::AcqRel) == n {
             return;

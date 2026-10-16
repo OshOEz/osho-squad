@@ -3,9 +3,13 @@
 //! The page is the item `review` of its conversation: waiting (`attente`) until answered
 //! (`repondue`). The answers are data: shown and sent as text, never run.
 
-use crate::i18n::Lang;
+use crate::agent::{AgentRt, Effects};
+use crate::i18n::{self, Lang};
+use crate::model::{new_id, now_ms, AgentMeta, AgentStatus};
+use anyhow::{anyhow, bail, Result};
 use rmcp::schemars;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::{BTreeMap, HashSet};
 
 /// The most questions a review asks.
@@ -175,10 +179,89 @@ pub fn answer_text(lang: Lang, review: &Review, answers: &Answers) -> String {
     lines.join("\n")
 }
 
+/// The agent waits for the user's answers to a review it published, its turn over: shown as
+/// waiting (amber in the window, counted in the tray) though nothing runs. Not `Waiting`, which
+/// is a turn under way for the rest of the app.
+pub fn awaits(meta: &AgentMeta) -> bool {
+    !meta.reviews.is_empty() && matches!(meta.status, AgentStatus::Done | AgentStatus::Idle)
+}
+
+/// What the notification at the end of a turn says while a review of the agent waits: its latest
+/// one's title. None when none waits.
+pub(crate) fn waiting_body(rt: &mut AgentRt) -> Option<String> {
+    let id = rt.meta.reviews.last()?.clone();
+    let titre: String = rt.conv.get(&id)?["contenu"]["titre"]
+        .as_str()?
+        .trim()
+        .chars()
+        .take(100)
+        .collect();
+    Some(tr!(
+        "Revue à remplir : {titre}",
+        "Review to answer: {titre}"
+    ))
+}
+
+impl AgentRt {
+    /// Appends `review` (checked) to the conversation, waiting for the user's answers: its id.
+    pub fn show_review(&mut self, review: &Review, fx: &mut Effects) -> String {
+        let id = new_id();
+        let item = json!({
+            "kind": "review", "id": id, "contenu": review, "statut": "attente",
+            "reponses": null, "ts": now_ms(),
+        });
+        self.append(item, fx);
+        self.meta.reviews.push(id.clone());
+        fx.agent_changed = true;
+        fx.save = true;
+        id
+    }
+
+    /// Takes the user's `answers` to the review `id`: answered then, and the message that tells
+    /// the agent. Under the agent's lock, so a second answer (a double click, two windows) is
+    /// refused.
+    pub fn answer_review(
+        &mut self,
+        id: &str,
+        answers: &Answers,
+        fx: &mut Effects,
+    ) -> Result<String> {
+        let item = self
+            .conv
+            .get(id)
+            .filter(|v| v["kind"] == "review")
+            .cloned()
+            .ok_or_else(|| anyhow!(tr!("revue introuvable", "review not found")))?;
+        if item["statut"] != "attente" {
+            bail!(tr!(
+                "Cette revue a déjà sa réponse.",
+                "This review was already answered."
+            ));
+        }
+        let review: Review = serde_json::from_value(item["contenu"].clone())?;
+        self.patch(id, json!({ "statut": "repondue", "reponses": answers }), fx);
+        self.meta.reviews.retain(|r| r != id);
+        fx.agent_changed = true;
+        fx.save = true;
+        Ok(answer_text(i18n::claude(), &review, answers))
+    }
+
+    /// The answers to the review `id` did not reach the agent: it waits again, its answers kept
+    /// for the page to show them.
+    pub fn reopen_review(&mut self, id: &str, fx: &mut Effects) {
+        self.patch(id, json!({ "statut": "attente" }), fx);
+        if !self.meta.reviews.iter().any(|r| r == id) {
+            self.meta.reviews.push(id.to_string());
+        }
+        fx.agent_changed = true;
+        fx.save = true;
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     /// The review of the spec's example: a choice with its recommendation, a free text.
     pub(crate) fn review() -> Review {
@@ -322,5 +405,154 @@ pub(crate) mod tests {
              - Exécution ? : Sous-agents (sub)\n\
              - Nom du module ? : (sans réponse)"
         );
+    }
+
+    use crate::agent::{AgentAlert, AgentRt, Effects, NotifyKind};
+    use crate::model::{AgentMeta, AgentStatus, ConvOp};
+    use crate::paths::test_dir;
+
+    fn agent(dir: &std::path::Path) -> AgentRt {
+        AgentRt::new(
+            AgentMeta {
+                id: "a1".into(),
+                cwd: "C:/p".into(),
+                ..Default::default()
+            },
+            dir,
+        )
+    }
+
+    /// A turn that ends as Claude Code ends one.
+    fn ends(a: &mut AgentRt) -> Effects {
+        let mut fx = Effects::default();
+        a.handle_frame(
+            &json!({"type":"result","subtype":"success","is_error":false,"duration_ms":1,
+                "result":"Revue publiée.","modelUsage":{}}),
+            &mut fx,
+        );
+        fx
+    }
+
+    #[test]
+    fn a_review_shown_is_an_item_of_the_conversation_that_waits_once_the_turn_is_over() {
+        let dir = test_dir("review-show");
+        let mut a = agent(&dir);
+        a.push_user("u1", "Relis le plan", 0, &[], &mut Effects::default());
+        let mut fx = Effects::default();
+        let id = a.show_review(&checked(review()).unwrap(), &mut fx);
+        assert!(
+            matches!(&fx.ops[..], [ConvOp::Append { item }] if item["kind"] == "review" && item["id"] == id.as_str()),
+            "{:?}",
+            fx.ops
+        );
+        assert!(fx.agent_changed && fx.save);
+        let item = a.conv.get(&id).unwrap().clone();
+        assert_eq!(item["statut"], "attente");
+        assert_eq!(item["reponses"], Value::Null);
+        assert_eq!(item["contenu"]["titre"], "Plan du parseur");
+        assert_eq!(a.meta.reviews, [id.clone()]);
+        // Mid-turn it runs: it waits once the turn is over.
+        assert!(!awaits(&a.meta));
+        let fx = ends(&mut a);
+        assert_eq!(a.meta.status, AgentStatus::Done);
+        assert!(awaits(&a.meta));
+        // The end of the turn calls for the user, as a question does.
+        assert_eq!(
+            fx.notify,
+            Some(AgentAlert {
+                kind: NotifyKind::Question,
+                body: "Revue à remplir : Plan du parseur".into()
+            })
+        );
+    }
+
+    #[test]
+    fn a_review_left_unanswered_still_waits_after_the_next_turn() {
+        let dir = test_dir("review-unanswered");
+        let mut a = agent(&dir);
+        a.push_user("u1", "Relis", 0, &[], &mut Effects::default());
+        let id = a.show_review(&review(), &mut Effects::default());
+        ends(&mut a);
+        // The user writes something else instead.
+        a.push_user("u2", "Autre chose", 0, &[], &mut Effects::default());
+        assert!(!awaits(&a.meta));
+        let fx = ends(&mut a);
+        assert_eq!(a.meta.reviews, [id]);
+        assert!(awaits(&a.meta));
+        assert_eq!(fx.notify.unwrap().kind, NotifyKind::Question);
+    }
+
+    #[test]
+    fn a_review_is_answered_once_and_the_message_tells_the_answers() {
+        let dir = test_dir("review-answer-once");
+        let mut a = agent(&dir);
+        let id = a.show_review(&review(), &mut Effects::default());
+        let mut fx = Effects::default();
+        let text = a.answer_review(&id, &answers(), &mut fx).unwrap();
+        assert!(
+            text.contains("Ici (inline)") && text.contains("lexer"),
+            "{text}"
+        );
+        let item = a.conv.get(&id).unwrap().clone();
+        assert_eq!(item["statut"], "repondue");
+        assert_eq!(
+            item["reponses"],
+            json!({ "questions": { "q1": "inline", "q2": "lexer" }, "note": "Merci" })
+        );
+        assert!(a.meta.reviews.is_empty());
+        assert!(fx.agent_changed && fx.save);
+        // A second answer is refused, and changes nothing.
+        let again = a.answer_review(&id, &Answers::default(), &mut Effects::default());
+        assert!(format!("{:#}", again.unwrap_err()).contains("déjà"));
+        assert_eq!(a.conv.get(&id).unwrap()["reponses"]["note"], "Merci");
+        // An id that is no review of this conversation.
+        assert!(a
+            .answer_review("zzz", &answers(), &mut Effects::default())
+            .is_err());
+        // A turn that ends after it no longer speaks of the review.
+        a.push_user("u1", "Suite", 0, &[], &mut Effects::default());
+        assert_eq!(ends(&mut a).notify.unwrap().kind, NotifyKind::Done);
+    }
+
+    #[test]
+    fn answers_that_did_not_reach_the_agent_wait_again_and_are_kept() {
+        let dir = test_dir("review-reopen");
+        let mut a = agent(&dir);
+        let id = a.show_review(&review(), &mut Effects::default());
+        a.answer_review(&id, &answers(), &mut Effects::default())
+            .unwrap();
+        a.reopen_review(&id, &mut Effects::default());
+        let item = a.conv.get(&id).unwrap().clone();
+        assert_eq!(item["statut"], "attente");
+        assert_eq!(item["reponses"]["questions"]["q1"], "inline");
+        assert_eq!(a.meta.reviews, [id.clone()]);
+        // Answered again then, once.
+        assert!(a
+            .answer_review(&id, &answers(), &mut Effects::default())
+            .is_ok());
+    }
+
+    #[test]
+    fn a_waiting_review_survives_a_restart() {
+        let dir = test_dir("review-restart");
+        let mut a = agent(&dir);
+        a.push_user("u1", "Relis", 0, &[], &mut Effects::default());
+        let id = a.show_review(&review(), &mut Effects::default());
+        // What is saved of the agent (mid-turn), read back as the app does when it starts again.
+        let saved: AgentMeta =
+            serde_json::from_value(serde_json::to_value(&a.meta).unwrap()).unwrap();
+        drop(a);
+        let mut back = AgentRt::new(saved, &dir);
+        assert_eq!(back.meta.status, AgentStatus::Done);
+        assert_eq!(back.meta.reviews, [id.clone()]);
+        assert!(awaits(&back.meta));
+        assert_eq!(back.conv.get(&id).unwrap()["statut"], "attente");
+        assert!(back
+            .answer_review(&id, &answers(), &mut Effects::default())
+            .is_ok());
+        // An agent saved before reviews has none.
+        let old: AgentMeta =
+            serde_json::from_value(json!({ "id": "a1", "name": "vieux" })).unwrap();
+        assert!(old.reviews.is_empty());
     }
 }

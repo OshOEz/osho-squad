@@ -762,11 +762,11 @@ impl AgentRt {
         fx.ops.push(op);
     }
 
-    fn append(&mut self, item: Value, fx: &mut Effects) {
+    pub(crate) fn append(&mut self, item: Value, fx: &mut Effects) {
         self.push(ConvOp::Append { item }, fx);
     }
 
-    fn patch(&mut self, id: &str, patch: Value, fx: &mut Effects) {
+    pub(crate) fn patch(&mut self, id: &str, patch: Value, fx: &mut Effects) {
         self.push(
             ConvOp::Patch {
                 id: id.to_string(),
@@ -1976,7 +1976,11 @@ impl AgentRt {
         if !interrupted && !had_queue {
             fx.notify = Some(match &failure {
                 Some(reason) => AgentAlert::new(NotifyKind::Error, notify::error_body(reason)),
-                None => AgentAlert::new(NotifyKind::Done, notify::done_body(&reply)),
+                // A review it published waits: the user is called as for a question.
+                None => match crate::review::waiting_body(self) {
+                    Some(body) => AgentAlert::new(NotifyKind::Question, body),
+                    None => AgentAlert::new(NotifyKind::Done, notify::done_body(&reply)),
+                },
             });
         }
         fx.agent_changed = true;
