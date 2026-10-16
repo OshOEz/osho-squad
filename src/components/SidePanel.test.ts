@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setLang } from '../lib/i18n';
 import { app } from '../lib/state.svelte';
-import { agent, fakeBackend, project, resetApp } from '../test/ipc';
+import { agent, fakeBackend, project, resetApp, reviewItem } from '../test/ipc';
 import SidePanel from './SidePanel.svelte';
 import { getByTip, queryByTip } from '../test/tip';
 
@@ -45,6 +45,32 @@ describe('SidePanel', () => {
     fakeBackend({ git_files: () => [] });
     render(SidePanel, { project: project(), agent: app.agents.a1, docked: true });
     expect(queryByTip(document.body, 'Fermer')).not.toBeInTheDocument();
+  });
+
+  it('shows the latest review that waits, else the one its card chose', async () => {
+    const a9 = agent({ id: 'a9', reviews: ['rv2'] });
+    app.agents.a9 = a9;
+    fakeBackend({
+      git_files: () => [],
+      get_conversation: () => [
+        reviewItem({ id: 'rv1', statut: 'repondue', contenu: { ...reviewItem().contenu, titre: 'Spec' } }),
+        reviewItem({ id: 'rv2', contenu: { ...reviewItem().contenu, titre: 'Plan' } }),
+      ],
+    });
+    app.panelTab = 'review';
+    render(SidePanel, { project: project(), agent: app.agents.a9, docked: true });
+    expect(screen.getByRole('tab', { name: /Revue\s*1/ })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByRole('heading', { name: 'Plan' })).toBeInTheDocument();
+    app.reviewShown = { a9: 'rv1' };
+    expect(await screen.findByRole('heading', { name: 'Spec' })).toBeInTheDocument();
+  });
+
+  it('says when the agent has no review', async () => {
+    fakeBackend({ git_files: () => [], get_conversation: () => [] });
+    app.agents.a8 = agent({ id: 'a8' });
+    app.panelTab = 'review';
+    render(SidePanel, { project: project(), agent: app.agents.a8, docked: true });
+    expect(await screen.findByText('Aucune revue à afficher pour cet agent.')).toBeInTheDocument();
   });
 });
 

@@ -537,6 +537,7 @@ class AppState {
         const shown = this.taskView[e.agent.id];
         if (shown && !bgRow(e.agent.plan, shown)) this.closeTask(e.agent.id);
         this.noteAttention(prev, e.agent);
+        this.noteReview(prev, e.agent);
         if (newRecipe) this.runHooks(this.recipeHooks, e.agent.id);
         // Its setup is over: what it wrote is in its log (and its failure in the conversation).
         if (!e.agent.setup) this.dropSetupOutput(e.agent.id);
@@ -765,6 +766,19 @@ class AppState {
   toggleLayout() {
     this.ui.layout = this.split ? '' : 'split';
     this.persistUi();
+  }
+
+  /** Shows the review `reviewId` of the agent `agentId` in the right half of the window (its tab, the split layout). */
+  openReview(agentId: string, reviewId: string) {
+    this.reviewShown[agentId] = reviewId;
+    this.panelTab = 'review';
+    if (!this.split) this.toggleLayout();
+  }
+
+  /** A review the agent on screen just published opens by itself. */
+  private noteReview(prev: Agent | undefined, next: Agent) {
+    const fresh = next.reviews.find((id) => !prev?.reviews.includes(id));
+    if (fresh && this.ui.view === 'project' && this.agent?.id === next.id) this.openReview(next.id, fresh);
   }
 
   setDiffSplit(on: boolean) {

@@ -108,7 +108,7 @@ export default {
   },
 
   // The side panel's two tabs.
-  sidePanel: { uncommitted: 'Non commités', history: 'Historique' },
+  sidePanel: { uncommitted: 'Non commités', history: 'Historique', review: 'Revue' },
 
   // The context menu's row of colors: « Couleur 3 ».
   menu: { swatch: '{label} {n}' },

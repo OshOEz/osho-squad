@@ -27,6 +27,7 @@
   import Notice from './conv/Notice.svelte';
   import PermissionCard from './conv/PermissionCard.svelte';
   import QuestionCard from './conv/QuestionCard.svelte';
+  import ReviewCard from './conv/ReviewCard.svelte';
   import SetupProgress from './conv/SetupProgress.svelte';
   import Thinking from './conv/Thinking.svelte';
   import ToolRow from './conv/ToolRow.svelte';
@@ -734,6 +735,8 @@
                   latest={item.id === latestTurn}
                   edits={i === top.length - 1 ? lastEdits : []}
                 />
+              {:else if item.kind === 'review'}
+                <ReviewCard {item} agentId={agent.id} />
               {:else if item.kind === 'notice'}
                 <Notice {item} />
               {/if}

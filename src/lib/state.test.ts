@@ -1648,3 +1648,19 @@ describe('the view of a background task (ESC-14)', () => {
     });
   });
 });
+
+describe('reviews', () => {
+  beforeEach(() => resetApp());
+
+  it('opens the review the agent on screen publishes, not another agent’s', async () => {
+    const { emit } = await start();
+    expect(app.agent?.id).toBe('a1');
+    emit({ type: 'agent', agent: agent({ reviews: ['rv1'] }) });
+    expect(app.panelTab).toBe('review');
+    expect(app.reviewShown).toEqual({ a1: 'rv1' });
+    expect(app.split).toBe(true);
+    // Another agent's review does not take the panel.
+    emit({ type: 'agent', agent: agent({ id: 'a2', name: 'tests-e2e', createdAt: 2, reviews: ['rv2'] }) });
+    expect(app.reviewShown).toEqual({ a1: 'rv1' });
+  });
+});

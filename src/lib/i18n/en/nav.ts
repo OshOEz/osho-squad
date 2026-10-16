@@ -92,7 +92,7 @@ export default defineZone('nav', {
     },
   },
 
-  sidePanel: { uncommitted: 'Uncommitted', history: 'History' },
+  sidePanel: { uncommitted: 'Uncommitted', history: 'History', review: 'Review' },
 
   menu: { swatch: '{label} {n}' },
 
