@@ -51,6 +51,7 @@ export default defineZone('mcp', {
     answerQuestion: 'Answer a question',
     reportProgress: 'Report progress',
     splitTicket: 'Split its ticket',
+    showReview: 'Show a review',
     approveTicket: 'Approve a ticket',
     rejectTicket: 'Send a ticket back',
     resumeTicket: 'Resume a ticket',

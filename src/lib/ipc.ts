@@ -45,6 +45,7 @@ import type {
   StatsView,
   SubagentRead,
   TaskOutput,
+  ReviewAnswers,
   TermInfo,
   TestRecipe,
   Ticket,
@@ -197,6 +198,9 @@ export const api = {
     invoke<void>('answer_question', { id, requestId, answers }),
   answerPermission: (id: string, requestId: string, decision: 'allow' | 'always' | 'deny', message: string | null = null) =>
     invoke<void>('answer_permission', { id, requestId, decision, message }),
+  /** « Envoyer » of a review's page: the answers go to the agent as the user's message (refused once answered). */
+  answerReview: (agentId: string, reviewId: string, answers: ReviewAnswers) =>
+    invoke<void>('answer_review', { agentId, reviewId, answers }),
   setAgentOptions: (id: string, o: { model?: string; effort?: string; mode?: string }) =>
     invoke<void>('set_agent_options', { id, model: o.model ?? null, effort: o.effort ?? null, mode: o.mode ?? null }),
   /** The Claude account of an agent that has not started (empty: « Automatique », the backend chooses). */

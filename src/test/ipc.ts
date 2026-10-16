@@ -9,7 +9,7 @@ import { gitSync } from '../lib/git-sync.svelte';
 import { mcp } from '../lib/mcp.svelte';
 import { trees } from '../lib/editor/trees.svelte';
 import { app } from '../lib/state.svelte';
-import type { Agent, BoardSettings, BranchInfo, GitInfo, Project, Settings, Ticket } from '../lib/types';
+import type { Agent, BoardSettings, BranchInfo, GitInfo, Project, ReviewItem, Settings, Ticket } from '../lib/types';
 
 export interface Call {
   cmd: string;
@@ -147,6 +147,7 @@ export function agent(over: Partial<Agent> = {}): Agent {
     resumeAt: null,
     ticketId: null,
     progressLine: null,
+    reviews: [],
     appendPrompt: null,
     portBase: null,
     recipe: null,
@@ -160,6 +161,41 @@ export function agent(over: Partial<Agent> = {}): Agent {
     terminalId: null,
     tuiExit: null,
     isola: false,
+    ...over,
+  };
+}
+
+export function reviewItem(over: Partial<ReviewItem> = {}): ReviewItem {
+  return {
+    kind: 'review',
+    id: 'rv1',
+    ts: 1,
+    statut: 'attente',
+    reponses: null,
+    contenu: {
+      titre: 'Plan du parseur',
+      sur: 'Plan',
+      chapo: 'Trois lots.',
+      puces: [
+        { texte: 'Migration risquée', ton: 'alerte' },
+        { texte: 'Tests verts', ton: null },
+      ],
+      sections: [{ titre: 'Lots', ton: null, items: ['Lot 1'], paragraphes: ['Le lot 1 crée le lexer.'] }],
+      titreQuestions: null,
+      questions: [
+        {
+          id: 'q1',
+          titre: 'Exécution ?',
+          contexte: 'Deux façons de faire.',
+          placeholder: null,
+          choix: [
+            { valeur: 'sub', libelle: 'Sous-agents', detail: null, reco: true },
+            { valeur: 'inline', libelle: 'Ici', detail: 'Plus lent', reco: false },
+          ],
+        },
+        { id: 'q2', titre: 'Nom du module ?', contexte: null, placeholder: 'parser', choix: [] },
+      ],
+    },
     ...over,
   };
 }
@@ -304,6 +340,7 @@ export function resetApp(over: { projects?: Project[]; agents?: Agent[]; tickets
   app.bgOpen = {};
   app.filesScope = 'agent';
   app.panelTab = 'files';
+  app.reviewShown = {};
   app.diffSplit = false;
   app.modal = null;
   app.toasts = [];

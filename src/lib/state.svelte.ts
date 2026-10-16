@@ -245,8 +245,10 @@ class AppState {
   version = $state('');
   filesOpen = $state(false);
   filesScope = $state<'agent' | 'project'>('agent');
-  /** Tab of the side panel: uncommitted files or the repository history. */
-  panelTab = $state<'files' | 'history'>('files');
+  /** Tab of the side panel: uncommitted files, the repository history, or an agent's review. */
+  panelTab = $state<'files' | 'history' | 'review'>('files');
+  /** The review the side panel shows for an agent (its card clicked, or the one it just published), by agent. */
+  reviewShown = $state<Record<string, string>>({});
   /** Side-by-side diffs (else unified), shared by the diff dialog and the split layout. */
   diffSplit = $state(readPref('diffSplit') === '1');
   showArchived = $state(false);

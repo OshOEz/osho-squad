@@ -58,6 +58,7 @@ export default {
     answerQuestion: 'Répondre à une question',
     reportProgress: 'Donner son avancement',
     splitTicket: 'Découper son ticket',
+    showReview: 'Afficher une revue',
     approveTicket: 'Valider un ticket',
     rejectTicket: 'Renvoyer un ticket',
     resumeTicket: 'Reprendre un ticket',

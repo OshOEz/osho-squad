@@ -37,6 +37,7 @@ const ESCOUADE_TOOLS: Record<string, Key> = {
   answer_question: 'mcp.tools.answerQuestion',
   report_progress: 'mcp.tools.reportProgress',
   split_ticket: 'mcp.tools.splitTicket',
+  show_review: 'mcp.tools.showReview',
   approve_ticket: 'mcp.tools.approveTicket',
   reject_ticket: 'mcp.tools.rejectTicket',
   resume_ticket: 'mcp.tools.resumeTicket',

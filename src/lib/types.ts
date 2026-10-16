@@ -627,6 +627,8 @@ export interface Agent {
   ticketId: string | null;
   /** What the agent last reported of its work through Escouade's MCP server (120 characters at most), until its next report. */
   progressLine: string | null;
+  /** The reviews it published (`show_review`) that wait for the user's answers, oldest first: ids of their items. */
+  reviews: string[];
   /** The ticket's protocol, appended to Claude Code's system prompt. */
   appendPrompt: string | null;
   /** First of the 10 ports reserved for its test launches. */
@@ -1165,7 +1167,59 @@ export interface EventItem extends Base {
   ts: number;
 }
 
-export type ConvItem = UserItem | TextItem | ThinkingItem | ToolItem | QuestionItem | PermissionItem | TurnItem | NoticeItem | EventItem;
+export interface ReviewBullet {
+  texte: string;
+  /** 'alerte' shows it in red; anything else was dropped by the backend. */
+  ton: 'alerte' | 'neutre' | null;
+}
+export interface ReviewSection {
+  titre: string;
+  ton: 'alerte' | 'neutre' | null;
+  items: string[];
+  paragraphes: string[];
+}
+export interface ReviewChoice {
+  valeur: string;
+  libelle: string;
+  detail: string | null;
+  /** The recommended choice: marked, and checked before the user picks. */
+  reco: boolean;
+}
+export interface ReviewQuestion {
+  id: string;
+  titre: string;
+  contexte: string | null;
+  /** Empty: a free text. */
+  choix: ReviewChoice[];
+  placeholder: string | null;
+}
+/** A review as the agent wrote it (the format of the skill `revue-artefact`). */
+export interface ReviewContent {
+  titre: string;
+  sur: string | null;
+  chapo: string | null;
+  puces: ReviewBullet[];
+  sections: ReviewSection[];
+  titreQuestions: string | null;
+  questions: ReviewQuestion[];
+}
+/** The user's answers: by question id, a choice's `valeur` or a text; and « Autre chose ? ». */
+export interface ReviewAnswers {
+  questions: Record<string, string>;
+  note: string;
+}
+/** A review an agent published (`show_review`): its page in the side panel, waiting until answered. */
+export interface ReviewItem extends Base {
+  kind: 'review';
+  contenu: ReviewContent;
+  statut: 'attente' | 'repondue';
+  /** Kept on a review that waits again too (its answers could not be sent). */
+  reponses: ReviewAnswers | null;
+  ts: number;
+}
+
+export type ConvItem =
+  UserItem | TextItem | ThinkingItem | ToolItem | QuestionItem | PermissionItem | TurnItem | NoticeItem | EventItem | ReviewItem;
 
 export type ConvOp =
   | { op: 'append'; item: ConvItem }
