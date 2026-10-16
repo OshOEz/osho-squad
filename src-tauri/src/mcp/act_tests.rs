@@ -6,7 +6,7 @@ use super::act::{board_change, board_changes};
 use super::tests::{ACTING, AGENTS_ONLY, EXPOSED};
 use super::tools::{SetBoardArgs, ToolError};
 use super::tools_tests::{
-    as_agent, external, keys, last_entry, link, other_project, project, put, put_agent, read,
+    as_agent, call, external, keys, last_entry, link, other_project, project, put, put_agent, read,
     refused, ticket, Client,
 };
 use crate::accounts::PRINCIPAL;
@@ -152,6 +152,7 @@ async fn the_acting_tools_say_what_they_take_and_that_they_change_things() {
     assert_eq!(required("send_message"), ["agent", "text"]);
     assert_eq!(required("stop_agent"), ["agent"]);
     assert_eq!(required("report_progress"), ["line"]);
+    assert_eq!(required("show_review"), ["questions", "titre"]);
     assert_eq!(required("split_ticket"), ["tickets"]);
     assert_eq!(required("reject_ticket"), ["comment", "ticket"]);
     for name in [
@@ -1322,6 +1323,78 @@ async fn an_agent_reports_what_it_does_on_one_line_and_a_new_report_replaces_it(
 }
 
 #[tokio::test]
+async fn an_agent_shows_a_review_in_its_own_conversation_and_is_told_to_end_its_turn() {
+    let h = harness("mcp-act-show-review");
+    let (p, _) = h.project(false).await;
+    let a = put_agent(&h, &p, "relecteur", 1);
+    let c = as_agent(&h, &a.id).await;
+    let review = json!({
+        "titre": "Plan du parseur", "chapo": "Trois lots.",
+        "puces": [{ "texte": "Migration risquée", "ton": "alerte" }],
+        "questions": [
+            { "id": "q1", "titre": "Exécution ?", "choix": [
+                { "valeur": "sub", "libelle": "Sous-agents", "reco": true },
+                { "valeur": "inline", "libelle": "Ici" }
+            ] },
+            { "id": "q2", "titre": "Nom du module ?" }
+        ]
+    });
+    let (text, error) = call(&c, "show_review", review).await;
+    assert!(!error, "{text}");
+    assert_eq!(
+        text,
+        "Page affichée. Termine ton tour : les réponses arriveront dans un message."
+    );
+    let items = h.items(&a.id);
+    let shown: Vec<_> = items.iter().filter(|i| i["kind"] == "review").collect();
+    assert_eq!(shown.len(), 1);
+    assert_eq!(shown[0]["statut"], "attente");
+    assert_eq!(
+        shown[0]["contenu"]["questions"][0]["choix"][0]["reco"],
+        true
+    );
+    assert_eq!(h.agent(&a.id).reviews, [shown[0]["id"].as_str().unwrap()]);
+    let logged = entry(&h);
+    assert_eq!(
+        (
+            logged.caller.as_str(),
+            logged.tool.as_str(),
+            logged.outcome,
+            logged.summary.as_str()
+        ),
+        ("relecteur", "show_review", "ok", "titre: Plan du parseur")
+    );
+
+    // A review that cannot be shown: the agent reads why, nothing is shown.
+    let why = refused(
+        &c,
+        "show_review",
+        json!({ "titre": "Vide", "questions": [] }),
+    )
+    .await;
+    assert!(why.contains("1 à 20"), "{why}");
+    let why = refused(
+        &c,
+        "show_review",
+        json!({ "titre": "Double", "questions": [{ "id": "q1", "titre": "A" }, { "id": "q1", "titre": "B" }] }),
+    )
+    .await;
+    assert!(why.contains("« q1 »"), "{why}");
+    // Not even JSON of the format: refused by the server before the tool.
+    let why = refused(&c, "show_review", json!({ "titre": 3 })).await;
+    assert!(!why.is_empty());
+    assert_eq!(
+        h.items(&a.id)
+            .iter()
+            .filter(|i| i["kind"] == "review")
+            .count(),
+        1
+    );
+    c.cancel().await.unwrap();
+    h.core.mcp.stop();
+}
+
+#[tokio::test]
 async fn a_status_line_is_kept_with_the_agent_and_an_agent_saved_before_it_has_none() {
     let h = harness("mcp-act-progress-saved");
     let (p, _) = h.project(false).await;
@@ -1362,6 +1435,10 @@ async fn the_tools_for_agents_are_refused_to_claude_outside_escouade_and_logged(
     let c = external(&h).await;
     for (tool, args) in [
         ("report_progress", json!({ "line": "Je travaille" })),
+        (
+            "show_review",
+            json!({ "titre": "Plan", "questions": [{ "id": "q1", "titre": "Ok ?" }] }),
+        ),
         ("split_ticket", json!({ "tickets": [{ "title": "Un" }] })),
     ] {
         let why = refused(&c, tool, args).await;
@@ -1377,6 +1454,7 @@ async fn the_tools_for_agents_are_refused_to_claude_outside_escouade_and_logged(
         assert_eq!(logged.message.as_deref(), Some(why.as_str()));
     }
     assert_eq!(h.agent(&a.id).progress_line, None);
+    assert!(h.items(&a.id).iter().all(|i| i["kind"] != "review"));
     assert_eq!(h.core.tickets.read().len(), 1);
     assert_eq!(stored(&h, &t.id).title, "Le sien");
     c.cancel().await.unwrap();

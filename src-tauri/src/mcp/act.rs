@@ -35,8 +35,8 @@
 //!   a ticket sent back says who sent it back.
 //!
 //! A refusal (`ToolError::Refused`) is a guard saying no; a failure (`ToolError::Failed`) is
-//! something asked that does not fit (a name, an empty title…). `report_progress` and
-//! `split_ticket` are for the agents of Escouade alone.
+//! something asked that does not fit (a name, an empty title…). `report_progress`,
+//! `show_review` and `split_ticket` are for the agents of Escouade alone.
 
 use super::activity;
 use super::images;
@@ -60,6 +60,7 @@ use crate::core::{supports_effort, AgentOptions, Core};
 use crate::git;
 use crate::i18n;
 use crate::model::{BoardSettings, Column, PauseReason, Project, Ticket, PROGRESS_LINE_MAX};
+use crate::review::{self, Review};
 use crate::telemetry::Event;
 use crate::tickets::{
     comment_missing, only_todo_is_edited, ticket_agent_options, title_missing, Refusal, TicketDraft,
@@ -1760,6 +1761,22 @@ pub(super) fn report_progress<R: Runtime>(
     core.emit_agent(&h);
     core.request_save();
     json(&json!({ "line": line }))
+}
+
+/// `show_review`: the calling agent's review, checked, shown in its own conversation; the agent
+/// is told to end its turn, the answers coming as a message.
+pub(super) fn show_review<R: Runtime>(
+    core: &Arc<Core<R>>,
+    caller: &Caller,
+    asked: Review,
+) -> Result<String, ToolError> {
+    let id = agent_only(caller)?;
+    let review = review::checked(asked).map_err(ToolError::Failed)?;
+    core.show_review(id, &review).map_err(failure)?;
+    Ok(tr!(
+        "Page affichée. Termine ton tour : les réponses arriveront dans un message.",
+        "Page shown. End your turn: the answers will come in a message."
+    ))
 }
 
 /// One of `split_ticket`'s tickets, checked: its draft.

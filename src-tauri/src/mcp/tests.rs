@@ -45,6 +45,7 @@ pub(super) const EXPOSED: &[&str] = &[
     "resume_ticket",
     "send_message",
     "set_board",
+    "show_review",
     "split_ticket",
     "start_ticket",
     "stop_agent",
@@ -94,7 +95,7 @@ pub(super) const ANSWERING: &[&str] = &["answer_permission", "answer_question"];
 const NAMED_FOR_IT: &[(&str, &str)] = &[("approve_ticket", "approve"), ("delete_ticket", "delete")];
 
 /// Those an external Claude is refused.
-pub(super) const AGENTS_ONLY: &[&str] = &["report_progress", "split_ticket"];
+pub(super) const AGENTS_ONLY: &[&str] = &["report_progress", "show_review", "split_ticket"];
 
 /// The test's own tool, beside them in tests (`tools::Tools::test_router`).
 pub(super) const TEST_TOOL: &str = "whoami";

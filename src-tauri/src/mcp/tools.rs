@@ -1349,6 +1349,24 @@ impl<R: Runtime> Tools<R> {
     }
 
     #[tool(
+        description = "Only for Escouade's own agents (refused to any other client). Show the user a review page in the side panel of your own conversation, rather than asking in text: a title (titre), optional summary (chapo) and key points (puces, ton \"alerte\" in red), sections, then 1 to 20 questions with ids of their own, each a choice (choix; reco true marks the recommended one, preselected) or a free text; a field « Autre chose ? » is always added. 50 KB at most. Answers at once: end your turn then, the user's answers come later as a message (Réponses à « <titre> » : …).",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn show_review(
+        &self,
+        ctx: ToolCtx<R>,
+        Parameters(review): Parameters<crate::review::Review>,
+    ) -> CallToolResult {
+        let asked = summary(&[("titre", Some(review.titre.trim()))]);
+        let result = act::show_review(&ctx.core, &ctx.caller, review);
+        ctx.reply("show_review", &asked, result)
+    }
+
+    #[tool(
         description = "Only for Escouade's own agents (refused to any other client, and to an agent without a ticket). Split the work that remains of your ticket into new To do tickets (10 at most per call), made after it: with chain true (the default) each comes after the one before it, the first after yours; with chain false all come after yours alone and may run in parallel. They start once the tickets they come after are done. Each ends with a line saying who made it. Each also gets its own copies of the images of your ticket: all of them by default, or those you name in its images (by file or index, from 0, as get_ticket lists them), none with an empty list; a reference that fits no image of your ticket, or that names one whose file is gone, refuses the whole call. When the images are left out (images not given), one whose file is gone is skipped, not copied. Answers the keys of the tickets made; when an image was skipped, an object with those keys (tickets) and one sentence for each image skipped (skipped).",
         annotations(
             read_only_hint = false,
