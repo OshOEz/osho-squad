@@ -50,6 +50,7 @@ mod proc;
 mod process_tests;
 mod pty;
 mod resources;
+mod review;
 mod search;
 #[cfg(unix)]
 mod shellenv;
