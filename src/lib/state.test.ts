@@ -1664,6 +1664,17 @@ describe('reviews', () => {
     expect(app.reviewShown).toEqual({ a1: 'rv1' });
   });
 
+  it('does not reopen the layout for a review back to waiting after a failed send', async () => {
+    const { emit } = await start();
+    emit({ type: 'agent', agent: agent({ reviews: ['rv1'] }) });
+    // The send fails: the review leaves the agent's list, then comes back; the user had left the split layout.
+    emit({ type: 'agent', agent: agent({ reviews: [] }) });
+    app.toggleLayout();
+    expect(app.split).toBe(false);
+    emit({ type: 'agent', agent: agent({ reviews: ['rv1'] }) });
+    expect(app.split).toBe(false);
+  });
+
   it('calls for a look at an agent out of sight whose review waits, and Ctrl+J goes to it', async () => {
     const { emit } = await start();
     // a2 is not on screen (a1 is): its turn ends with a review that waits.

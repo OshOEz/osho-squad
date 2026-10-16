@@ -19,6 +19,8 @@
 
   async function send() {
     sending = true;
+    // Keep this page shown once answered, even when the tab was opened with no review chosen.
+    app.reviewShown[agentId] = item.id;
     await app.run(api.answerReview(agentId, item.id, { questions: $state.snapshot(choices), note }));
     sending = false;
   }

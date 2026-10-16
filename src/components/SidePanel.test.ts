@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { applyConvOps } from '../lib/conversations.svelte';
 import { setLang } from '../lib/i18n';
 import { app } from '../lib/state.svelte';
 import { agent, fakeBackend, project, resetApp, reviewItem } from '../test/ipc';
@@ -63,6 +64,23 @@ describe('SidePanel', () => {
     expect(await screen.findByRole('heading', { name: 'Plan' })).toBeInTheDocument();
     app.reviewShown = { a9: 'rv1' };
     expect(await screen.findByRole('heading', { name: 'Spec' })).toBeInTheDocument();
+  });
+
+  it('keeps the answered page shown when the tab was opened with no review chosen', async () => {
+    app.agents.a7 = agent({ id: 'a7', reviews: ['rv1'] });
+    fakeBackend({
+      git_files: () => [],
+      get_conversation: () => [reviewItem()],
+      // The agent's side: the review is patched to answered.
+      answer_review: () => {
+        applyConvOps('a7', [{ op: 'patch', id: 'rv1', patch: { statut: 'repondue' } }]);
+      },
+    });
+    app.panelTab = 'review';
+    render(SidePanel, { project: project(), agent: app.agents.a7, docked: true });
+    await userEvent.click(await screen.findByRole('button', { name: 'Envoyer' }));
+    expect(await screen.findByText('répondue')).toBeInTheDocument();
+    expect(screen.queryByText('Aucune revue à afficher pour cet agent.')).not.toBeInTheDocument();
   });
 
   it('says when the agent has no review', async () => {

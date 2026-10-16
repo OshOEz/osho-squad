@@ -73,7 +73,7 @@ pub struct Question {
     pub id: String,
     pub titre: String,
     pub contexte: Option<String>,
-    /// None: the question is a free text.
+    /// Empty: the question is a free text.
     #[serde(default)]
     pub choix: Vec<Choice>,
     pub placeholder: Option<String>,
@@ -481,7 +481,7 @@ pub(crate) mod tests {
         assert_eq!(item["statut"], "attente");
         assert_eq!(item["reponses"], Value::Null);
         assert_eq!(item["contenu"]["titre"], "Plan du parseur");
-        assert_eq!(a.meta.reviews, [id.clone()]);
+        assert_eq!(a.meta.reviews, [id.as_str()]);
         // Mid-turn it runs: it waits once the turn is over.
         assert!(!awaits(&a.meta));
         let fx = ends(&mut a);
@@ -556,7 +556,7 @@ pub(crate) mod tests {
         let item = a.conv.get(&id).unwrap().clone();
         assert_eq!(item["statut"], "attente");
         assert_eq!(item["reponses"]["questions"]["q1"], "inline");
-        assert_eq!(a.meta.reviews, [id.clone()]);
+        assert_eq!(a.meta.reviews, [id.as_str()]);
         // Answered again then, once.
         assert!(a
             .answer_review(&id, &answers(), &mut Effects::default())
@@ -575,7 +575,7 @@ pub(crate) mod tests {
         drop(a);
         let mut back = AgentRt::new(saved, &dir);
         assert_eq!(back.meta.status, AgentStatus::Done);
-        assert_eq!(back.meta.reviews, [id.clone()]);
+        assert_eq!(back.meta.reviews, [id.as_str()]);
         assert!(awaits(&back.meta));
         assert_eq!(back.conv.get(&id).unwrap()["statut"], "attente");
         assert!(back
@@ -599,7 +599,7 @@ pub(crate) mod tests {
             .core
             .show_review(&a.id, &checked(review()).unwrap())
             .unwrap();
-        assert_eq!(h.agent(&a.id).reviews, [id.clone()]);
+        assert_eq!(h.agent(&a.id).reviews, [id.as_str()]);
         // The window is told: the item, then the agent's view with its review.
         assert!(h
             .events

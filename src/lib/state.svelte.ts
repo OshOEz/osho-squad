@@ -774,7 +774,8 @@ class AppState {
 
   /** A review the agent on screen just published opens by itself. */
   private noteReview(prev: Agent | undefined, next: Agent) {
-    const fresh = next.reviews.find((id) => !prev?.reviews.includes(id));
+    // Not one already shown: a send that failed puts its review back, which is not a new one.
+    const fresh = next.reviews.find((id) => !prev?.reviews.includes(id) && this.reviewShown[next.id] !== id);
     if (fresh && this.ui.view === 'project' && this.agent?.id === next.id) this.openReview(next.id, fresh);
   }
 
