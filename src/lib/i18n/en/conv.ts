@@ -149,4 +149,16 @@ export default defineZone('conv', {
   },
 
   markdown: { plainText: 'text', copied: 'Copied ✓' },
+
+  review: {
+    card: 'Review: {title}',
+    waiting: 'waiting',
+    answered: 'answered',
+    pill: 'Review',
+    none: 'No review to show for this agent.',
+    questions: 'Questions',
+    recommended: 'recommended',
+    note: 'Anything else?',
+    send: 'Send',
+  },
 });

@@ -170,4 +170,17 @@ export default {
 
   /** The code blocks of a reply (`lib/markdown.ts`): the language they have none of, and the copy button once pressed. */
   markdown: { plainText: 'texte', copied: 'Copié ✓' },
+
+  /** A review an agent published (`show_review`): its card in the conversation, its page in the side panel. `{title}`: its title. */
+  review: {
+    card: 'Revue : {title}',
+    waiting: 'en attente',
+    answered: 'répondue',
+    pill: 'Revue',
+    none: 'Aucune revue à afficher pour cet agent.',
+    questions: 'Questions',
+    recommended: 'recommandé',
+    note: 'Autre chose ?',
+    send: 'Envoyer',
+  },
 } as const satisfies Tree;
