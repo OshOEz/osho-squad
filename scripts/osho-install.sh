@@ -4,6 +4,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
 
+# A sync stopped on a conflict leaves conflict markers in the code: finish it first.
+if [[ -d .git/rebase-merge || -d .git/rebase-apply ]]; then
+  echo "Synchro (rebase) pas terminée : résous le conflit, puis git rebase --continue (ou demande à Claude)." >&2
+  exit 1
+fi
+
 npm ci --no-audit --no-fund
 npm run tauri build -- --bundles app --config src-tauri/tauri.osho.conf.json
 
