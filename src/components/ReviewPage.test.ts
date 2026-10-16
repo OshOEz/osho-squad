@@ -51,17 +51,37 @@ describe('ReviewPage', () => {
     expect(screen.getByText('répondue')).toBeInTheDocument();
   });
 
-  it('tells a send that failed and can send again', async () => {
+  it('tells a send that failed, keeps the answers and can send again', async () => {
     fakeBackend({
       answer_review: () => {
         throw 'L’agent est en vue Claude Code : ouvre-le pour démarrer son terminal.';
       },
     });
     render(ReviewPage, { item: reviewItem(), agentId: 'a1' });
+    await userEvent.click(screen.getByRole('radio', { name: /Ici/ }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Nom du module ?' }), 'lexer');
+    await userEvent.type(screen.getByRole('textbox', { name: 'Autre chose ?' }), 'Merci');
     const send = screen.getByRole('button', { name: 'Envoyer' });
     await userEvent.click(send);
     await waitFor(() => expect(app.toasts.at(-1)).toMatchObject({ kind: 'error', text: expect.stringMatching(/vue Claude Code/) }));
-    expect(send).toBeEnabled();
+    await waitFor(() => expect(send).toBeEnabled());
+    expect(screen.getByRole('radio', { name: /Ici/ })).toBeChecked();
+    expect(screen.getByRole('textbox', { name: 'Nom du module ?' })).toHaveValue('lexer');
+    expect(screen.getByRole('textbox', { name: 'Autre chose ?' })).toHaveValue('Merci');
+  });
+
+  it('disables the send button while sending, so a double click sends once', async () => {
+    let release!: () => void;
+    const backend = fakeBackend({ answer_review: () => new Promise<void>((r) => (release = r)) });
+    render(ReviewPage, { item: reviewItem(), agentId: 'a1' });
+    const send = screen.getByRole('button', { name: 'Envoyer' });
+    await userEvent.click(send);
+    await waitFor(() => expect(send).toBeDisabled());
+    await userEvent.click(send);
+    expect(backend.called('answer_review')).toHaveLength(1);
+    release();
+    await waitFor(() => expect(send).toBeEnabled());
+    expect(backend.called('answer_review')).toHaveLength(1);
   });
 
   it('survives two choices of the same value', () => {
