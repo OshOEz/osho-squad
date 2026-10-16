@@ -4,6 +4,7 @@
 //! (`repondue`). The answers are data: shown and sent as text, never run.
 
 use crate::agent::{AgentRt, Effects};
+use crate::core::Core;
 use crate::i18n::{self, Lang};
 use crate::model::{new_id, now_ms, AgentMeta, AgentStatus};
 use anyhow::{anyhow, bail, Result};
@@ -11,6 +12,8 @@ use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, HashSet};
+use std::sync::Arc;
+use tauri::Runtime;
 
 /// The most questions a review asks.
 pub const QUESTIONS_MAX: usize = 20;
@@ -255,6 +258,34 @@ impl AgentRt {
         }
         fx.agent_changed = true;
         fx.save = true;
+    }
+}
+
+impl<R: Runtime> Core<R> {
+    /// Shows `review` (checked) in the conversation of the agent `id`: its item's id.
+    pub fn show_review(self: &Arc<Self>, id: &str, review: &Review) -> Result<String> {
+        self.with_agent(id, |rt, fx| Ok(rt.show_review(review, fx)))
+    }
+
+    /// The user's answers to the review `review` of the agent `id`: answered, then sent to the
+    /// agent as the user's message (`send_message`: a turn in the Escouade view, typed in its
+    /// terminal in the Claude Code view, its process started again if it was stopped). Not
+    /// delivered, the review waits again with its answers.
+    pub async fn answer_review(
+        self: &Arc<Self>,
+        id: &str,
+        review: &str,
+        answers: Answers,
+    ) -> Result<()> {
+        let text = self.with_agent(id, |rt, fx| rt.answer_review(review, &answers, fx))?;
+        if let Err(e) = self.send_message(id, text, Vec::new()).await {
+            let _ = self.with_agent(id, |rt, fx| {
+                rt.reopen_review(review, fx);
+                Ok(())
+            });
+            return Err(e);
+        }
+        Ok(())
     }
 }
 
@@ -554,5 +585,84 @@ pub(crate) mod tests {
         let old: AgentMeta =
             serde_json::from_value(json!({ "id": "a1", "name": "vieux" })).unwrap();
         assert!(old.reviews.is_empty());
+    }
+
+    use crate::accounts::PRINCIPAL;
+    use crate::core_tests::{agent_on, harness};
+
+    #[tokio::test]
+    async fn the_answers_reach_the_agent_as_the_users_message_and_only_once() {
+        let h = harness("review-answer");
+        let (p, _) = h.project(false).await;
+        let a = agent_on(&h, &p, PRINCIPAL).await;
+        let id = h
+            .core
+            .show_review(&a.id, &checked(review()).unwrap())
+            .unwrap();
+        assert_eq!(h.agent(&a.id).reviews, [id.clone()]);
+        // The window is told: the item, then the agent's view with its review.
+        assert!(h
+            .events
+            .lock()
+            .iter()
+            .any(|e| e["type"] == "conv" && e["ops"][0]["item"]["kind"] == "review"));
+        assert!(h
+            .events
+            .lock()
+            .iter()
+            .any(|e| e["type"] == "agent" && e["agent"]["reviews"][0] == id.as_str()));
+
+        h.core.answer_review(&a.id, &id, answers()).await.unwrap();
+        h.wait("the turn of the answers", |h| {
+            h.items(&a.id).iter().any(|i| i["kind"] == "turn") && !h.agent(&a.id).status.is_active()
+        })
+        .await;
+        let items = h.items(&a.id);
+        let user = items.iter().find(|i| i["kind"] == "user").unwrap();
+        let text = user["text"].as_str().unwrap();
+        assert!(
+            text.contains("Plan du parseur") && text.contains("Ici (inline)"),
+            "{text}"
+        );
+        let item = items.iter().find(|i| i["id"] == id.as_str()).unwrap();
+        assert_eq!(item["statut"], "repondue");
+        assert!(h.agent(&a.id).reviews.is_empty());
+
+        let again = h
+            .core
+            .answer_review(&a.id, &id, answers())
+            .await
+            .unwrap_err();
+        assert!(format!("{again:#}").contains("déjà"), "{again:#}");
+        // No second message.
+        assert_eq!(
+            h.items(&a.id)
+                .iter()
+                .filter(|i| i["kind"] == "user")
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn answers_that_cannot_reach_the_agent_leave_the_review_waiting_with_them() {
+        let h = harness("review-answer-fails");
+        let (p, _) = h.project(false).await;
+        let a = agent_on(&h, &p, PRINCIPAL).await;
+        let id = h
+            .core
+            .show_review(&a.id, &checked(review()).unwrap())
+            .unwrap();
+        // In the Claude Code view with no terminal open: nothing to type the answers into.
+        h.core.agent(&a.id).unwrap().lock().meta.terminal = true;
+        assert!(h.core.answer_review(&a.id, &id, answers()).await.is_err());
+        let item = h
+            .items(&a.id)
+            .into_iter()
+            .find(|i| i["id"] == id.as_str())
+            .unwrap();
+        assert_eq!(item["statut"], "attente");
+        assert_eq!(item["reponses"]["questions"]["q1"], "inline");
+        assert_eq!(h.agent(&a.id).reviews, [id]);
     }
 }

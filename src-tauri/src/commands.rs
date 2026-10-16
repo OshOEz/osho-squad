@@ -636,6 +636,19 @@ pub fn answer_permission(
         .map_err(err)
 }
 
+/// « Envoyer » of a review's page: the user's answers, sent to the agent that published it.
+#[tauri::command]
+pub async fn answer_review(
+    core: CoreState<'_>,
+    agent_id: String,
+    review_id: String,
+    answers: crate::review::Answers,
+) -> Res<()> {
+    core.answer_review(&agent_id, &review_id, answers)
+        .await
+        .map_err(err)
+}
+
 #[tauri::command]
 pub async fn set_agent_options(
     core: CoreState<'_>,

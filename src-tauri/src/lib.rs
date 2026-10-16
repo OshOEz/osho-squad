@@ -340,6 +340,7 @@ pub fn run() {
             commands::message_subagent,
             commands::answer_question,
             commands::answer_permission,
+            commands::answer_review,
             commands::set_agent_options,
             commands::set_agent_account,
             commands::resume_on_account,
